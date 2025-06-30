@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 import sys
 
-from math import cos, pi, sin, sqrt
+from math import cos, gcd, pi, sin, sqrt
 from orbitit import geom_3d as geom
 from orbitit.colors import STD_COLORS as cols
 from orbitit import geomtypes
@@ -53,6 +53,9 @@ odd_n = args.n % 2 != 0
 m_even = args.m % 2 == 0
 m_first_half = args.m < args.n / 2
 
+no_of_compounds = gcd(args.n, args.m)
+no_of_vs_x_gram = args.n // no_of_compounds
+
 if odd_n:
     if not m_even:
         LOGGER.error(
@@ -70,9 +73,15 @@ if odd_n:
         # not really needed, but better be correct:
         m_first_half = not m_first_half
 else:
-    if args.m != 2:
-        LOGGER.error("Only m=2 supported for even n (at the momente")
+    if not m_even:
+        # TODO: update log: same as abve
+        LOGGER.error("Only even m supported for even n (at the moment)")
         sys.exit(1)
+    else:
+        # FIXME: Fix m for m > n / 2
+        if no_of_vs_x_gram == 2:
+            LOGGER.error("Values n and m lead to digons: these aren't supported")
+            sys.exit(1)
 
 # Vertices
 # This assumes the side of the n-gon has length 2
@@ -119,27 +128,19 @@ vs.extend([geom.vec(v[0], v[1], -v[2]) for v in vs])
 # Faces and colours
 # The {n/2}-gram
 n_gram_col = 3
-# FIXME: don't split in odd / even but in args.n % args.m
-if odd_n:
-    if args.n % args.m == 0:
-        # handle e.g. that {9/3} consists of three triangles
-        faces = [
-            [(m - i * args.m) % args.n for i in range(args.n // args.m)]
-            for m in range(args.m)
-        ]
-        col_i = [n_gram_col for m in range(args.m)]
-    else:
-        faces = [
-            [(-i * args.m) % args.n for i in range(args.n)]
-        ]
-        col_i = [n_gram_col]
-else:
-    # handle e.g. that {8/2} consists of two squares
+# I think the if statement should be gcd(args.n, args.m) > 1
+if no_of_compounds > 1:
+    # handle e.g. that {9/3} consists of three triangles
     faces = [
-        [(m - i * args.m) % args.n for i in range(args.n // args.m)]
+        [(m - i * args.m) % args.n for i in range(no_of_vs_x_gram)]
         for m in range(args.m)
     ]
     col_i = [n_gram_col for m in range(args.m)]
+else:
+    faces = [
+        [(-i * args.m) % args.n for i in range(args.n)]
+    ]
+    col_i = [n_gram_col]
 
 # The equilateral triangles
 faces.extend(
@@ -162,7 +163,8 @@ faces.extend(
 )
 col_i.extend([1 for _ in range(args.n)])
 
-if args.n % args.m != 0 and not args.allow_holes:
+# TODO: handle 10 / 4 here
+if no_of_compounds == 1 and not args.allow_holes:
     n_m_gram = geom.Face([vs[faces[0][i]] for i in range(args.n)])
     with geomtypes.FloatHandler(8):
         extended_n_m_gram = n_m_gram.outline
