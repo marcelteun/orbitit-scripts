@@ -1,5 +1,6 @@
 # Script to generate a cupalaic prismatoid based on a {n/m}-gram
 import argparse
+import logging
 from pathlib import Path
 import sys
 
@@ -8,9 +9,26 @@ from orbitit import geom_3d as geom
 from orbitit.colors import STD_COLORS as cols
 from orbitit import geomtypes
 
-parser = argparse.ArgumentParser(
-    description="Generate an off file for {n/m} based pseudo-cupolaic prismatoids",
-)
+DESCRIPTION = """Generate an off file for {n/m} based pseudo-cupolaic prismatoids
+
+The result will be a polyhedron with a {n/m}-gram in the bottom and attached to the edges there will
+be triangles. which will be equilateral by default. The polyhedraon will be closed by adding
+bowties, for which the crossing edges are shared with the triangles and the parallel edges are
+shared with a neighbouring bowtie.
+
+Note all combinations of n and m have solutions.
+
+In two dimensions there is not difference between for instance a {7/3} and a {7/4}. It is the
+convention for e.g. anti-prisms to use {7/4} if retrograde triangles are added. Here only one option
+is valid, e.g. for {7/3} you can only get retrograde triangles and for {7/2} you can only get normal
+triangles.
+
+The script will however still expect to follow the convention and return an error if the wrong value
+of 'm' is used.
+"""
+LOGGER = logging.getLogger(__name__)
+
+parser = argparse.ArgumentParser(description=DESCRIPTION)
 parser.add_argument("n", type=int, help="Number of vertices of the {n/m}-gram.")
 parser.add_argument("m", type=int, help="Number of full rounds the {n/m}-gram makes.")
 parser.add_argument("filename", help="Path to the off file to be save.")
@@ -28,20 +46,39 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.n < 5:
-    print("n must be bigger than 4")
+    LOGGER.error("n must be bigger than 4")
     sys.exit(1)
 
-if 2 * args.m > args.n:
-    print("Value of 'm' too big. Make sure that 2 * m < n")
-    sys.exit(1)
+odd_n = args.n % 2 != 0
+m_even = args.m % 2 == 0
+m_first_half = args.m < args.n / 2
+
+if odd_n:
+    if not m_even:
+        LOGGER.error(
+            "No solution found for these n and m, try m = %d, using retrograde triangles",
+            args.n - args.m,
+        )
+        sys.exit(1)
+    if not m_first_half:
+        # The code below is for historical reasons: the script only used to support m for m < n/2
+        # Then for odd m it would use retrograde triangles by adjusting TOP_OFFSET. This special
+        # handling and isn't needed, though in that case the polygrams (at least) would turn inside
+        # out.
+        args.m = args.n - args.m
+        m_even = not m_even
+        # not really needed, but better be correct:
+        m_first_half = not m_first_half
+else:
+    if args.m != 2:
+        LOGGER.error("Only m=2 supported for even n (at the momente")
+        sys.exit(1)
 
 # Vertices
 # This assumes the side of the n-gon has length 2
 RADIUS = 1 / sin(pi / args.n)
 TWO_PI = 2 * pi
 DIAGONAL = 2 * RADIUS * sin(args.m * pi / args.n)
-odd_n = args.n % 2 != 0
-m_even = args.m % 2 == 0
 # TOP_OFFSET expresses which diagonal/edges the bowties: if the bowties create a n/x gram, it is the
 # value of x.
 if m_even:
@@ -52,11 +89,11 @@ else:
 BOWTIE_DIAGONAL = abs(2 * RADIUS * sin(TOP_OFFSET * pi / args.n))
 
 if not args.crossed_squares:
-    HALF_HEIGHT = sqrt(DIAGONAL**2 - BOWTIE_DIAGONAL**2) / 2
     assert geomtypes.FloatHandler.gt(DIAGONAL, BOWTIE_DIAGONAL), (
-        "It is not possible to get equilateral triangles, since the polyhedron will become "
+        "It is not possible to get equilateral triangles, e.g. the polyhedron might become "
         "completely flat. Try the option --crossed_squares instead"
     )
+    HALF_HEIGHT = sqrt(DIAGONAL**2 - BOWTIE_DIAGONAL**2) / 2
 else:
     HALF_HEIGHT = BOWTIE_DIAGONAL / 2  # half edge length
 
@@ -97,7 +134,6 @@ if odd_n:
         ]
         col_i = [n_gram_col]
 else:
-    assert args.m == 2, "Only m=2 supported for even n (at the moment)"
     # handle e.g. that {8/2} consists of two squares
     faces = [
         [(m - i * args.m) % args.n for i in range(args.n // args.m)]
