@@ -280,7 +280,7 @@ shape = geom.SimpleShape(
     vs,
     faces,
     colors=(cols, col_i),
-    name=f"{args.n}/2 pseudo-cupolaic prismatoid",
+    name=f"{args.n}/{args.m} pseudo-cupolaic prismatoid",
 )
 filepath = Path(args.filename)
 if filepath.is_file():
