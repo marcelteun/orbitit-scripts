@@ -26,7 +26,12 @@ triangles.
 The script will however still expect to follow the convention and return an error if the wrong value
 of 'm' is used.
 """
-LOGGER = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)-8s - %(message)s',
+    datefmt='%m-%d %H:%M',
+)
+LOGGER = logging.getLogger("polyhedron generator")
 
 parser = argparse.ArgumentParser(description=DESCRIPTION)
 parser.add_argument("n", type=int, help="Number of vertices of the {n/m}-gram.")
@@ -49,22 +54,22 @@ if args.n < 5:
     LOGGER.error("n must be bigger than 4")
     sys.exit(1)
 
-odd_n = args.n % 2 != 0
-m_even = args.m % 2 == 0
+n_is_even = args.n % 2 == 0
+m_is_even = args.m % 2 == 0
 m_first_half = args.m < args.n / 2
 
+# The bottom {n/m} may be a compound, e.g. for {8/2}
 no_of_compounds = gcd(args.n, args.m)
+# The number of vertices per sub-polygon:
 no_of_vs_x_gram = args.n // no_of_compounds
-if no_of_vs_x_gram == 2:
+if no_of_vs_x_gram == 2 and m_is_even:
     LOGGER.error("The provided values for n and m lead to digons: these aren't supported")
     sys.exit(1)
 
-if not m_even:
-    LOGGER.error(
-        "No solution found for these n and m, try m = %d, using retrograde triangles",
-        args.n - args.m,
-    )
-    sys.exit(1)
+# In case of odd m the top becomes a {n/x} gram, which might be a compound as well, initialise to 0
+# for now.
+no_of_compounds_top = 0
+no_of_vs_x_gram_top = 0
 
 if m_first_half:
     v_distance = args.m
@@ -86,17 +91,56 @@ TOP_OFFSET = args.m // 2
 if not m_first_half:
     TOP_OFFSET = -TOP_OFFSET
 
-# This gives the following length for the crossed rectangle width (the larger value)
-BOWTIE_DIAGONAL = abs(2 * RADIUS * sin(TOP_OFFSET * pi / args.n))
+if m_is_even:
+    # This gives the following length for the crossed rectangle width (the larger value)
+    BOWTIE_DIAGONAL = abs(2 * RADIUS * sin(TOP_OFFSET * pi / args.n))
+    if not args.crossed_squares:
+        assert geomtypes.FloatHandler.gt(DIAGONAL, BOWTIE_DIAGONAL), (
+            "It is not possible to get equilateral triangles, e.g. the polyhedron might become "
+            "completely flat. Try the option --crossed_squares instead"
+        )
+        HALF_HEIGHT = sqrt(DIAGONAL**2 - BOWTIE_DIAGONAL**2) / 2
+    else:
+        HALF_HEIGHT = BOWTIE_DIAGONAL / 2  # half edge length
+else:  # m is odd
+    # TODO investigate whether it is better the other way around, since now a "% n" might be needed
+    if m_first_half:
+        v_distance_top = v_distance - 2
+    else:
+        v_distance_top = v_distance + 2
+    no_of_compounds_top = gcd(args.n, min(v_distance_top, args.n - v_distance_top))
+    no_of_vs_x_gram_top = args.n // no_of_compounds_top
+    # if no_of_vs_x_gram_top = 2 then the m/x doesn't need to be drawn
 
-if not args.crossed_squares:
-    assert geomtypes.FloatHandler.gt(DIAGONAL, BOWTIE_DIAGONAL), (
-        "It is not possible to get equilateral triangles, e.g. the polyhedron might become "
-        "completely flat. Try the option --crossed_squares instead"
-    )
-    HALF_HEIGHT = sqrt(DIAGONAL**2 - BOWTIE_DIAGONAL**2) / 2
-else:
-    HALF_HEIGHT = BOWTIE_DIAGONAL / 2  # half edge length
+    if args.crossed_squares:
+        HALF_HEIGHT = 1
+    else:
+        #        ______________
+        #       /              \
+        #      /                \
+        #     /                  \
+        #    /                    \
+        #   +----------------------+
+        # There are two options to make the isosceles trapezoid to become trisosceles
+        # 1. Adapt the height so the top edge gets the same length as the sides
+        # 2. Adapt the height so the bottom edge gets the same length as the sides
+        #
+        # The crossed square diagonal should be equal to the diagonal used at the top or bottom
+        # (top_distance) This while the crossed square diagonal = 2 * √(1 + HALF_HEIGHT**2)
+        roots = []
+        for distance in (v_distance, v_distance_top):
+            half_crossed_square_diagonal = RADIUS * sin(distance * pi / args.n)
+            root = half_crossed_square_diagonal**2 - 1
+            if geomtypes.FloatHandler.gt(root, 0):
+                roots.append(sqrt(root))
+        assert roots, (
+            "It is not possible to get equilateral triangles, e.g. the polyhedron might become "
+            "completely flat. Try the option --crossed_squares instead"
+        )
+        # For now use the minimum
+        # TODO: decide how to handle (command line parameter?)
+        LOGGER.info("Possible heights: %s", roots)
+        HALF_HEIGHT = min(roots)
 
 # E.g. {7}
 #  Y ^
@@ -120,7 +164,13 @@ vs.extend([geom.vec(v[0], v[1], -v[2]) for v in vs])
 # Faces and colours
 # The {n/2}-gram
 n_gram_col = 3
-if no_of_compounds > 1:
+if n_is_even and no_of_vs_x_gram == 2:
+    # E.g. this is a {10/5} i.e. 5 digons. For n is even these become edges where the isosceles
+    # rectangles meet.
+    no_of_compounds = 0
+    faces = []
+    col_i = []
+elif no_of_compounds > 1:
     # handle e.g. that {9/3} consists of three triangles
     faces = [
         # opposite distance to make sure the normal points outward
@@ -134,36 +184,97 @@ else:
     ]
     col_i = [n_gram_col]
 
-# The equilateral triangles
-faces.extend(
-    [
-        [i, (i + v_distance) % args.n, (i + TOP_OFFSET) % args.n + args.n] for i in range(args.n)
-    ]
-)
-col_i.extend([2 for _ in range(args.n)])
+# FIXME: share more code with above
+if not m_is_even:
+    if n_is_even and no_of_vs_x_gram_top == 2:
+        # E.g. this is a {10/5} i.e. 5 digons. For n is even these become edges where the isosceles
+        # rectangles meet.
+        no_of_compounds_top = 0
+    elif no_of_compounds_top > 1:
+        faces.extend(
+            [
+                # opposite distance to make sure the normal points outward
+                [(m - i * v_distance_top) % args.n + args.n for i in range(no_of_vs_x_gram_top)]
+                for m in range(no_of_compounds_top)
+            ]
+        )
+        col_i.extend([n_gram_col for m in range(no_of_compounds_top)])
+    else:
+        faces.extend(
+            [
+                [(i * v_distance_top) % args.n + args.n for i in range(args.n)]
+            ]
+        )
+        col_i.extend([n_gram_col])
 
 # The crossed rectangles:
-faces.extend(
-    [
+crossed_col = 1
+if m_is_even:
+    faces.extend(
         [
-            i,
-            i + args.n,
-            (i + TOP_OFFSET) % args.n,
-            (i + TOP_OFFSET) % args.n + args.n
-        ] for i in range(args.n)
-    ]
-)
-col_i.extend([1 for _ in range(args.n)])
+            [
+                i,
+                i + args.n,
+                (i + TOP_OFFSET) % args.n,
+                (i + TOP_OFFSET) % args.n + args.n
+            ] for i in range(args.n)
+        ]
+    )
+else:
+    # For odd m the crossed rectangles are along the prism sides
+    faces.extend(
+        [
+            [
+                i,
+                i + args.n,
+                (i + 1) % args.n,
+                (i + 1) % args.n + args.n
+            ] for i in range(args.n)
+        ]
+    )
+col_i.extend([crossed_col for _ in range(args.n)])
 
+# The slanted faces:
+slanted_col = 2
+if m_is_even:
+    # The equilateral triangles
+    faces.extend(
+        [
+            [i, (i + v_distance) % args.n, (i + TOP_OFFSET) % args.n + args.n]
+            for i in range(args.n)
+        ]
+    )
+else:
+    # Use isosceles (or trisosceles) trapezoids
+    faces.extend(
+        [
+            [
+                i,
+                (i + 1) % args.n + args.n,
+                (i + args.m - 1) % args.n + args.n,
+                (i + args.m) % args.n,
+            ] for i in range(args.n)
+        ]
+    )
+col_i.extend([slanted_col for _ in range(args.n)])
+
+# FIXME: magical constant 8
+exp_tol_eq_float = 8
 if not args.allow_holes:
     for face_index in range(no_of_compounds):
-        n_m_gram = geom.Face([vs[faces[face_index][i]] for i in range(no_of_vs_x_gram)])
-        # FIXME: magical constant 8
-        with geomtypes.FloatHandler(8):
-            extended_n_m_gram = n_m_gram.outline
+        poly_gram = geom.Face([vs[faces[face_index][i]] for i in range(no_of_vs_x_gram)])
+        with geomtypes.FloatHandler(exp_tol_eq_float):
+            outline = poly_gram.outline
             offset = len(vs)
-            vs.extend(extended_n_m_gram)
-            faces[face_index] = [i + offset for i in range(len(extended_n_m_gram))]
+            vs.extend(outline)
+            faces[face_index] = [i + offset for i in range(len(outline))]
+    for face_index in range(no_of_compounds, no_of_compounds_top + no_of_compounds):
+        poly_gram = geom.Face([vs[faces[face_index][i]] for i in range(no_of_vs_x_gram_top)])
+        with geomtypes.FloatHandler(exp_tol_eq_float):
+            outline = poly_gram.outline
+            offset = len(vs)
+            vs.extend(outline)
+            faces[face_index] = [i + offset for i in range(len(outline))]
 
 shape = geom.SimpleShape(
     vs,
