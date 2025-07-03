@@ -53,6 +53,9 @@ args = parser.parse_args()
 if args.n < 5:
     LOGGER.error("n must be bigger than 4")
     sys.exit(1)
+if not 0 < args.m < args.n:
+    LOGGER.error("Make sure that 0 < m < {args.n}")
+    sys.exit(1)
 
 n_is_even = args.n % 2 == 0
 m_is_even = args.m % 2 == 0
