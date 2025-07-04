@@ -50,6 +50,10 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
+# When taking the outline of a concave polygon, use this exponent to decide whether two floats are
+# equal
+EXP_TOL_EQ_FLOAT = 8
+
 if args.n < 5:
     LOGGER.error("n must be bigger than 4")
     sys.exit(1)
@@ -261,19 +265,17 @@ else:
     )
 col_i.extend([slanted_col for _ in range(args.n)])
 
-# FIXME: magical constant 8
-exp_tol_eq_float = 8
 if not args.allow_holes:
     for face_index in range(no_of_compounds):
         poly_gram = geom.Face([vs[faces[face_index][i]] for i in range(no_of_vs_x_gram)])
-        with geomtypes.FloatHandler(exp_tol_eq_float):
+        with geomtypes.FloatHandler(EXP_TOL_EQ_FLOAT):
             outline = poly_gram.outline
             offset = len(vs)
             vs.extend(outline)
             faces[face_index] = [i + offset for i in range(len(outline))]
     for face_index in range(no_of_compounds, no_of_compounds_top + no_of_compounds):
         poly_gram = geom.Face([vs[faces[face_index][i]] for i in range(no_of_vs_x_gram_top)])
-        with geomtypes.FloatHandler(exp_tol_eq_float):
+        with geomtypes.FloatHandler(EXP_TOL_EQ_FLOAT):
             outline = poly_gram.outline
             offset = len(vs)
             vs.extend(outline)
