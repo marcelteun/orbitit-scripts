@@ -110,7 +110,6 @@ if m_is_even:
     else:
         HALF_HEIGHT = BOWTIE_DIAGONAL / 2  # half edge length
 else:  # m is odd
-    # TODO investigate whether it is better the other way around, since now a "% n" might be needed
     if m_first_half:
         v_distance_top = v_distance - 2
     else:
