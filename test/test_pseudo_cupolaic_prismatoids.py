@@ -52,6 +52,17 @@ class TestPCP(unittest.TestCase):
 
     def test_with_holes(self):
         "Test PCP with some that allow holes andhave double coverage"""
+        test_cases = (
+            (7, 2),
+            (7, 3),
+            (7, 4),
+            (7, 5),
+            (9, 4),
+            (10, 5),
+        )
+        for n, m in test_cases:
+            crossed_squares = m % 2 == 1
+            self._test_one(n, m, crossed_squares, allow_holes=True)
 
     def test_no_holes(self):
         """Test PCP that where n-grams will not show any holes."""
@@ -63,27 +74,34 @@ class TestPCP(unittest.TestCase):
                 if (n, m) in self.only_crossed:
                     crossed_squares = True
 
-                tail= "_crossed_squares" if crossed_squares else ""
-                allow_holes = (n, m) in self.no_double_coverage
-                if m in (1, n - 1):
-                    allow_holes = True
-                try:
-                    shape = PCP(n, m, crossed_squares, allow_holes)
-                except AssertionError as ae:
-                    raise ValueError(f"The values n = {n} and m = {m} lead to an assertion") from ae
+                self._test_one(n, m, crossed_squares, allow_holes=False)
 
-                # for now compare strings
-                filename = f"{n}_{m}_{self.filename}{tail}.off"
-                off_str = shape.to_off()
-                exp_file = self.exp_dir / filename
-                with open(exp_file) as fd:
-                    org_str = fd.read()
-                if org_str != off_str:
-                    # save off file for analysis
-                    out_file = self.out_dir / filename
-                    with open(out_file, "w") as fd:
-                        fd.write(off_str)
-                        self.fail(f"PCP({n}, {m}) failed: {out_file} not same as {exp_file}")
+    def _test_one(self, n, m, crossed_squares, allow_holes):
+        """Helper function to test one PCP."""
+        # for now compare strings
+        tail = "_crossed_squares" if crossed_squares else ""
+        if allow_holes:
+            tail += "_hollow"
+        filename = f"{n}_{m}_{self.filename}{tail}.off"
+        # some overwrite for allow_holes where it doesn't make sense anyway (but no filename change)
+        if m in (1, n - 1) or (n, m) in self.no_double_coverage:
+            allow_holes = True
+
+        try:
+            shape = PCP(n, m, crossed_squares, allow_holes)
+        except AssertionError as ae:
+            raise ValueError(f"The values n = {n} and m = {m} lead to an assertion") from ae
+
+        off_str = shape.to_off()
+        exp_file = self.exp_dir / filename
+        with open(exp_file) as fd:
+            org_str = fd.read()
+        if org_str != off_str:
+            # save off file for analysis
+            out_file = self.out_dir / filename
+            with open(out_file, "w") as fd:
+                fd.write(off_str)
+                self.fail(f"PCP({n}, {m}) failed: {out_file} not same as {exp_file}")
 
 if __name__ == "__main__":
     unittest.main()
