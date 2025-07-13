@@ -65,8 +65,8 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
             the outline. If set to False the polygon will follow the n edges, which might not be
             shown well in a 3D player, e.g. holes might appear at parts that have even coverage.
         """
-        if n < 5:
-            raise ValueError("n must be bigger than 4")
+        if n < 3:
+            raise ValueError("n must be bigger than 3")
         if not 0 < m < n:
             raise ValueError(f"Make sure that 0 < m < {n} got m={m}")
 
@@ -92,12 +92,7 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
         self.bottom.vs_offset = 0
 
         if self.bottom.no_of_vs_x_gram == 2 and self.m_is_even:
-            LOGGER.error(
-                "The provided values for n (%d) and m (%d) lead to digons: these aren't supported",
-                n,
-                m,
-            )
-            sys.exit(1)
+            LOGGER.warning("Note, the provided values for n (%d) and m (%d) lead to digons", n, m)
 
         if self.m_first_half:
             self.bottom.v_distance = m
