@@ -363,10 +363,11 @@ if __name__ == "__main__":
 
     filepath = Path(args.filename)
     if filepath.is_file():
-        yes_or_no = input("File exists. Overwrite? y/N\n")
-        if yes_or_no.lower()[0] != "y":
+        yes_or_no = input(f"{filepath} exists. Overwrite? y/N\n")
+        if not yes_or_no or yes_or_no.lower()[0] != "y":
             LOGGER.warning("No overwrite requested; bailing out")
             sys.exit(1)
 
     with open(args.filename, "w") as fd:
         fd.write(shape.to_off())
+        LOGGER.info("Written %s", filepath)
