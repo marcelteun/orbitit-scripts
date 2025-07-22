@@ -350,14 +350,28 @@ if __name__ == "__main__":
         help="If specified the {n/m} polygon will be kept as is, which results in holes in orbitit "
         "for a 3D player using a stencil buffer."
     )
+    parser.add_argument(
+        "-w", "--overwrite",
+        action="store_true",
+        help="If specified an existing file will be overwritten without asking. Otherwise the "
+        "the script will ask interactively whether to overwrite an existing file."
+    )
+    parser.add_argument(
+        "-x", "--x-rotate",
+        metavar="DEG",
+        type=float,
+        help="Rotate the model a certain amount of degrees around the x-axis."
+    )
     args = parser.parse_args()
-    try:
-        shape = PseudoCupolaicPrismatoid(args.n, args.m, args.crossed_squares, args.allow_holes)
-    except ValueError:
-        sys.exit(1)
+    shape = PseudoCupolaicPrismatoid(args.n, args.m, args.crossed_squares, args.allow_holes)
+
+    if args.x_rotate:
+        shape.transform(
+            geomtypes.Rot3(angle=geom.DEG2RAD * args.x_rotate, axis=geomtypes.Vec3([1, 0, 0]))
+        )
 
     filepath = Path(args.filename)
-    if filepath.is_file():
+    if not args.overwrite and filepath.is_file():
         yes_or_no = input(f"{filepath} exists. Overwrite? y/N\n")
         if not yes_or_no or yes_or_no.lower()[0] != "y":
             LOGGER.warning("No overwrite requested; bailing out")
