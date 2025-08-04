@@ -9,6 +9,7 @@ from orbitit import geom_3d as geom
 from orbitit.colors import STD_COLORS as cols
 from orbitit import geomtypes
 
+# TODO: update text below
 DESCRIPTION = """Generate an off file for {n/m} based pseudo-cupolaic prismatoids
 
 The result will be a polyhedron with a {n/m}-gram in the bottom and attached to the edges there will
@@ -54,104 +55,126 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
     crossed_col = 1
     slanted_col = 2
 
-    def __init__(self, n, m, crossed_squares, allow_holes):
+    def __init__(self, n, m, p, crossed_squares, allow_holes):
         """Initialise object
 
-        n: amount of vertices in the {n/m}-gram
-        m: amount of times going around following the edges of the {n/m}-gram
+        This will create a pseudo-cupoalic prismatoid with bases {n/m} and {n/p}.
+
+        Note that not all combinations of n, m and p will lead to valid PCP.
+
+        n: amount of vertices in the bases
+        m: the number m in the primary base {n/m} with m < n/2.
+        p: the number p in the secondary base {n/p} with m < n/2. Use p = n to get a pseudo-base.
         crossed_squares: whether to use crossed squares. If False then either equilateral triangles
-            (for even m) or trisosceles trapezoids (odd m) will be used
+            (for p = n) or trisosceles trapezoids will be used
         allow_holes: if set to True then the {n/n}-gram(s) will be replaced by a polygon following
             the outline. If set to False the polygon will follow the n edges, which might not be
             shown well in a 3D player, e.g. holes might appear at parts that have even coverage.
         """
         if n < 3:
             raise ValueError("n must be bigger than 3")
-        if not 0 < m < n:
-            raise ValueError(f"Make sure that 0 < m < {n} got m={m}")
+        if p == n:
+            # pseudo-base should have even m
+            if m % 2 != 0:
+                raise ValueError(f"Expected an even m for a PCP with pseudo-base, got m={m}")
+        else:
+            # 2 bases
+            if not 0 < m < n:
+                raise ValueError(f"Make sure that 0 < m < n, got m = {m} and n = {n}")
+            m_low = n - m if m > n / 2 else m
+            if not m_low <= p <= n - m_low:
+                raise ValueError(f"Make sure that {m_low} <= p <= {n - m_low}, got p={p}")
+            if (p - m_low) % 2 != 0:
+                raise ValueError("Invalid difference between m and p")
+            if m_low == m and p != m:
+                raise ValueError(f"Invalid m and p: did you mean m = {n - m}?")
 
         self.n = n
         self.m = m
+        self.p = p
         self.crossed_squares = crossed_squares
         self.allow_holes = allow_holes
 
         self.n_is_even = n % 2 == 0
-        self.m_is_even = m % 2 == 0
-        self.m_first_half = m < n / 2
+        self.m_low = n - m if m > n / 2 else m
+        self.m_first_half = m <= n / 2
+        self.p_low = n - p if p > n / 2 else p
+        self.pseudo_base = p == n
 
         # any data for this pseudo cupolaic prismatoid
         self._pcp_data = Object()
         self._pcp_data.radius = 1 / sin(pi / n)
 
-        # properties of the {n/m}-gram (placed at the bottom)
-        self.bottom = Object()
+        # properties of the primary base polygon {n/m}
+        self.bases = [Object()]
         # {n/m} may be a compound, e.g. for {8/2}
-        self.bottom.no_of_compounds = gcd(n, m)
+        self.bases[0].no_of_compounds = gcd(n, m)
         # The number of vertices per sub-polygon:
-        self.bottom.no_of_vs_x_gram = n // self.bottom.no_of_compounds
-        self.bottom.vs_offset = 0
+        self.bases[0].no_of_vs_x_gram = n // self.bases[0].no_of_compounds
+        self.bases[0].v_distance = self.m_low
 
-        if self.bottom.no_of_vs_x_gram == 2 and self.m_is_even:
-            LOGGER.warning("Note, the provided values for n (%d) and m (%d) lead to digons", n, m)
+        if self.bases[0].no_of_vs_x_gram == 2 and self.pseudo_base:
+            LOGGER.info("The provided values for n (%d) and m (%d) lead to digons", n, m)
 
-        if self.m_first_half:
-            self.bottom.v_distance = m
-        else:
-            # The smallest value that expresses the vertex jump to make in the n/m-gram without
-            # taken into consideration the direction. This is used for the polygram at the bottom,
-            # while for even m the vertices at the top follow the m
-            self.bottom.v_distance = n - m
+        # Calculate the length of the diagonal. This assumes the side of the n-gon has length 2
+        self.bases[0].diagonal = 2 * self._pcp_data.radius * sin(self.bases[0].v_distance * pi / n)
 
-        # Vertices
-        # This assumes the side of the n-gon has length 2
-        self.bottom.diagonal = 2 * self._pcp_data.radius * sin(self.bottom.v_distance * pi / n)
-
-        # Only used for even m:
         # The crossed rectangles also follow some diagonal in the {n}-gram which results in a
         # {n/to_top_offset}-gram
-        self._pcp_data.to_top_offset = m // 2
+        if self.pseudo_base:
+            self._pcp_data.to_top_offset = m // 2
+        else:
+            # FIXME:
+            self._pcp_data.to_top_offset = (p - m) // 2
         # For the second half we turn in the opposite direction
+        # FIXME:
         if not self.m_first_half:
             self._pcp_data.to_top_offset = -self._pcp_data.to_top_offset
 
-        # In case of odd m the top becomes a {n/x} gram, which might be a compound as well,
-        # initialise to 0 for now.
-        self.top = Object()
-        self.top.no_of_compounds = 0
-        self.top.no_of_vs_x_gram = 0
-        self.top.v_distance = 0
-        self.top.vs_offset = 0
+        if self.pseudo_base:
+            self._pcp_data.half_height = self._get_half_height_pseudo_base()
+        else:
+            self._pcp_data.half_height = self._get_half_height_double_base()
 
-        if not self.m_is_even:
-            if self.m_first_half:
-                self.top.v_distance = self.bottom.v_distance - 2
-            else:
-                self.top.v_distance = self.bottom.v_distance + 2
-            self.top.no_of_compounds = gcd(
-                self.n,
-                min(self.top.v_distance, self.n - self.top.v_distance),
-            )
-            self.top.no_of_vs_x_gram = self.n // self.top.no_of_compounds
-            self.top.vs_offset = n
-
-        self._pcp_data.half_height = self._get_half_height()
         vertices = self._get_vertices()
+        faces, col_i = self.get_n_m_gram(0, True)
 
-        faces, col_i = self.get_n_m_gram(self.bottom, True)
-
-        # Only for odd m there is a top n-gram
-        if not self.m_is_even:
-            f, c = self.get_n_m_gram(self.top, False)
+        # TODO: use four classes:
+        # 1. shared abstract base class
+        # 2. pseudo-base class
+        # 3. double base class
+        # 4. general PCP class
+        if self.pseudo_base:
+            f, c = self._get_crossed_rectangles_pseudo_base()
             faces.extend(f)
             col_i.extend(c)
 
-        f, c = self.get_crossed_rectangles()
-        faces.extend(f)
-        col_i.extend(c)
+            f, c = self._get_slanted_faces_pseudo_base()
+            faces.extend(f)
+            col_i.extend(c)
+        else:
+            self.bases.append = Object()
+            if self.m_first_half:
+                self.bases[1].v_distance = self.bases[0].v_distance - 2
+            else:
+                self.bases[1].v_distance = self.bases[0].v_distance + 2
+            self.bases[1].no_of_compounds = gcd(
+                self.n,
+                min(self.bases[1].v_distance, self.n - self.bases[1].v_distance),
+            )
+            self.bases[1].no_of_vs_x_gram = self.n // self.bases[1].no_of_compounds
 
-        f, c = self.get_slanted_faces()
-        faces.extend(f)
-        col_i.extend(c)
+            f, c = self.get_n_m_gram(1, False)
+            faces.extend(f)
+            col_i.extend(c)
+
+            f, c = self._get_crossed_rectangles_double_base()
+            faces.extend(f)
+            col_i.extend(c)
+
+            f, c = self._get_slanted_faces_double_base()
+            faces.extend(f)
+            col_i.extend(c)
 
         super().__init__(
             vertices,
@@ -163,54 +186,56 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
         if not self.allow_holes:
             self.use_outlines()
 
-    def _get_half_height(self):
-        """Calculate the height of the polyhedron."""
-        if self.m_is_even:
-            # This gives the following length for the crossed rectangle width (the larger value)
-            crossed_diagonal = abs(
-                2 * self._pcp_data.radius * sin(self._pcp_data.to_top_offset * pi / self.n)
+    def _get_half_height_pseudo_base(self):
+        """Calculate the height of the polyhedron using a pseudo-base."""
+        # This gives the following length for the crossed rectangle width (the larger value)
+        crossed_diagonal = abs(
+            2 * self._pcp_data.radius * sin(self._pcp_data.to_top_offset * pi / self.n)
+        )
+        if not self.crossed_squares:
+            assert geomtypes.FloatHandler.gt(self.bases[0].diagonal, crossed_diagonal), (
+                "It is not possible to get equilateral triangles, e.g. the polyhedron might "
+                "become completely flat. Try the option with crossed squares instead"
             )
-            if not self.crossed_squares:
-                assert geomtypes.FloatHandler.gt(self.bottom.diagonal, crossed_diagonal), (
-                    "It is not possible to get equilateral triangles, e.g. the polyhedron might "
-                    "become completely flat. Try the option with crossed squares instead"
+            half_height = sqrt(self.bases[0].diagonal**2 - crossed_diagonal**2) / 2
+        else:
+            half_height = crossed_diagonal / 2  # half edge length
+        return half_height
+
+    def _get_half_height_double_base(self):
+        """Calculate the height of the polyhedron with a double base."""
+        if self.crossed_squares:
+            half_height = 1
+        else:
+            #        ______________
+            #       /              \
+            #      /                \
+            #     /                  \
+            #    /                    \
+            #   +----------------------+
+            # There are two options to make the isosceles trapezoid to become trisosceles
+            # 1. Adapt the height so the secondary edge gets the same length as the sides
+            # 2. Adapt the height so the primary edge gets the same length as the sides
+            #
+            # The crossed square diagonal should be equal to the diagonal used at the secondary
+            # or primary (top_distance).
+            # This while the crossed square diagonal = 2 * √(1 + half_height**2)
+            roots = []
+            for distance in (self.bases[0].v_distance, self.bases[1].v_distance):
+                half_crossed_square_diagonal = self._pcp_data.radius * sin(
+                    distance * pi / self.n
                 )
-                half_height = sqrt(self.bottom.diagonal**2 - crossed_diagonal**2) / 2
-            else:
-                half_height = crossed_diagonal / 2  # half edge length
-        else:  # m is odd
-            if self.crossed_squares:
-                half_height = 1
-            else:
-                #        ______________
-                #       /              \
-                #      /                \
-                #     /                  \
-                #    /                    \
-                #   +----------------------+
-                # There are two options to make the isosceles trapezoid to become trisosceles
-                # 1. Adapt the height so the top edge gets the same length as the sides
-                # 2. Adapt the height so the bottom edge gets the same length as the sides
-                #
-                # The crossed square diagonal should be equal to the diagonal used at the top or
-                # bottom (top_distance).
-                # This while the crossed square diagonal = 2 * √(1 + half_height**2)
-                roots = []
-                for distance in (self.bottom.v_distance, self.top.v_distance):
-                    half_crossed_square_diagonal = self._pcp_data.radius * sin(
-                        distance * pi / self.n
-                    )
-                    root = half_crossed_square_diagonal**2 - 1
-                    if geomtypes.FloatHandler.gt(root, 0):
-                        roots.append(sqrt(root))
-                assert roots, (
-                    "It is not possible to get equilateral triangles, e.g. the polyhedron might "
-                    "become completely flat. Try with crossed squares instead"
-                )
-                # For now use the minimum
-                # TODO: decide how to handle (command line parameter?)
-                LOGGER.info("Possible heights: %s", roots)
-                half_height = min(roots)
+                root = half_crossed_square_diagonal**2 - 1
+                if geomtypes.FloatHandler.gt(root, 0):
+                    roots.append(sqrt(root))
+            assert roots, (
+                "It is not possible to get equilateral triangles, e.g. the polyhedron might "
+                "become completely flat. Try with crossed squares instead"
+            )
+            # For now use the minimum
+            # TODO: decide how to handle (command line parameter?)
+            LOGGER.info("Possible heights: %s", roots)
+            half_height = min(roots)
         return half_height
 
     def _get_vertices(self):
@@ -242,24 +267,24 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
 
     def use_outlines(self):
         """Raplace the n-grams by there outlines to prevent holes."""
-        for face_index in range(self.bottom.no_of_compounds):
-            self.replace_face_by_outline(face_index, self.exp_tol_eq_float)
-        for face_index in range(
-            self.bottom.no_of_compounds, self.top.no_of_compounds + self.bottom.no_of_compounds
-        ):
-            self.replace_face_by_outline(face_index, self.exp_tol_eq_float)
+        face_index = 0
+        for base in self.bases:
+            for _ in range(base.no_of_compounds):
+                self.replace_face_by_outline(face_index, self.exp_tol_eq_float)
+                face_index += 1
 
-    def get_n_m_gram(self, n_gram, opposite_direction):
+    def get_n_m_gram(self, offset, opposite_direction):
         """Get a tuple with face and colour indices for the {n/m}-gram
 
         If the {n/m} is a compound then there will be more than one. This call with set the
         attributes faces and col_i for the n_gram object.
 
-        n_gram: either self.bottom or self.top attribute
-        opposite_direction: set to True to turn in the opposite direction. Top and bottom should use
-            opposite direction to get the face normal consistently pointing to the inside or the
-            outside.
+        offset: index in self.bases
+        opposite_direction: set to True to turn in the opposite direction. Primary and secondary
+            should use opposite direction to get the face normal consistently pointing to the inside
+            or the outside.
         """
+        n_gram = self.bases[offset]
         inv = -1 if opposite_direction else 1
         if self.n_is_even and n_gram.no_of_vs_x_gram == 2:
             # E.g. this is a {10/5} i.e. 5 digons. For n is even these become edges where the
@@ -271,7 +296,7 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
             # handle e.g. that {9/3} consists of three triangles
             faces = [
                 [
-                    (m + inv * i * n_gram.v_distance) % self.n + n_gram.vs_offset
+                    (m + inv * i * n_gram.v_distance) % self.n + offset
                     for i in range(n_gram.no_of_vs_x_gram)
                 ]
                 for m in range(n_gram.no_of_compounds)
@@ -279,64 +304,80 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
             col_i = [self.n_gram_col for m in range(n_gram.no_of_compounds)]
         else:
             faces = [
-                [(inv * i * n_gram.v_distance) % self.n + n_gram.vs_offset for i in range(self.n)]
+                [(inv * i * n_gram.v_distance) % self.n + offset for i in range(self.n)]
             ]
             col_i = [self.n_gram_col]
 
         return faces, col_i
 
-    def get_crossed_rectangles(self):
+    def _get_crossed_rectangles_pseudo_base(self):
         """Get a tuple with face and colour indices for the vertical crossed rectangles."""
-        if self.m_is_even:
-            faces = [
-                [
-                    i,
-                    i + self.n,
-                    (i + self._pcp_data.to_top_offset) % self.n,
-                    (i + self._pcp_data.to_top_offset) % self.n + self.n
-                ] for i in range(self.n)
-            ]
-        else:
-            # For odd m the crossed rectangles are along the prism sides
-            faces = [
-                [
-                    i,
-                    i + self.n,
-                    (i + 1) % self.n,
-                    (i + 1) % self.n + self.n
-                ] for i in range(self.n)
-            ]
+        faces = [
+            [
+                i,
+                i + self.n,
+                (i + self._pcp_data.to_top_offset) % self.n,
+                (i + self._pcp_data.to_top_offset) % self.n + self.n
+            ] for i in range(self.n)
+        ]
         return faces, [self.crossed_col for _ in range(self.n)]
 
-    def get_slanted_faces(self):
+    def _get_crossed_rectangles_double_base(self):
+        """Get a tuple with face and colour indices for the vertical crossed rectangles."""
+        # Currently along the prism side: FIXME: make this generally correct
+        faces = [
+            [
+                i,
+                i + self.n,
+                (i + 1) % self.n,
+                (i + 1) % self.n + self.n
+            ] for i in range(self.n)
+        ]
+        return faces, [self.crossed_col for _ in range(self.n)]
+
+    def _get_slanted_faces_pseudo_base(self):
         """Get a tuple with face and colour indices for the slanted faces."""
-        if self.m_is_even:
-            # The equilateral triangles
-            faces = [
-                [
-                    i,
-                    (i + self.bottom.v_distance) % self.n,
-                    (i + self._pcp_data.to_top_offset) % self.n + self.n,
-                ]
-                for i in range(self.n)
+        # The equilateral triangles
+        faces = [
+            [
+                i,
+                (i + self.bases[0].v_distance) % self.n,
+                (i + self._pcp_data.to_top_offset) % self.n + self.n,
             ]
-        else:
-            # Use isosceles (or trisosceles) trapezoids
-            faces = [
-                [
-                    i,
-                    (i + 1) % self.n + self.n,
-                    (i + self.m - 1) % self.n + self.n,
-                    (i + self.m) % self.n,
-                ] for i in range(self.n)
-            ]
+            for i in range(self.n)
+        ]
+        return faces, [self.slanted_col for _ in range(self.n)]
+
+    def _get_slanted_faces_double_base(self):
+        """Get a tuple with face and colour indices for the slanted faces."""
+        # Use isosceles (or trisosceles) trapezoids
+        faces = [
+            [
+                i,
+                (i + 1) % self.n + self.n,
+                (i + self.m - 1) % self.n + self.n,
+                (i + self.m) % self.n,
+            ] for i in range(self.n)
+        ]
         return faces, [self.slanted_col for _ in range(self.n)]
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=DESCRIPTION)
-    parser.add_argument("n", type=int, help="Number of vertices of the {n/m}-gram.")
-    parser.add_argument("m", type=int, help="Number of full rounds the {n/m}-gram makes.")
+    parser.add_argument("n", type=int, help="Number of vertices of the {n/m}-polygon.")
+    parser.add_argument(
+        "m",
+        type=int,
+        help="Vertex offset of the primary base polygon {n/m}. Use m > n/2 for retrograde "
+        "connecting faces.",
+    )
+    # TODO: option to generate all? What abould filename?
+    parser.add_argument(
+        "p",
+        type=int,
+        help="Vertex offset of the secondary base polygon {n/p}. Use m > n/2 for retrograde "
+        "connecting faces or p = n for pseudo-base",
+    )
     parser.add_argument("filename", help="Path to the off file to be save.")
     parser.add_argument(
         "-H", "--allow_holes",
@@ -363,7 +404,7 @@ if __name__ == "__main__":
         help="Rotate the model a certain amount of degrees around the x-axis."
     )
     args = parser.parse_args()
-    shape = PseudoCupolaicPrismatoid(args.n, args.m, args.crossed_squares, args.allow_holes)
+    shape = PseudoCupolaicPrismatoid(args.n, args.m, args.p, args.crossed_squares, args.allow_holes)
 
     if args.x_rotate:
         shape.transform(
