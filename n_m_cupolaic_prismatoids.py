@@ -164,10 +164,12 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
         # 4. general PCP class
         if self.pseudo_base:
             f, c = self._get_crossed_rectangles_pseudo_base()
+            self._pcp_data.crossed_squares_index = len(faces)
             faces.extend(f)
             col_i.extend(c)
 
             f, c = self._get_slanted_faces_pseudo_base()
+            self._pcp_data.slanted_faces_index = len(faces)
             faces.extend(f)
             col_i.extend(c)
         else:
@@ -176,10 +178,12 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
             col_i.extend(c)
 
             f, c = self._get_crossed_rectangles_double_base()
+            self._pcp_data.crossed_squares_index = len(faces)
             faces.extend(f)
             col_i.extend(c)
 
             f, c = self._get_slanted_faces_double_base()
+            self._pcp_data.slanted_faces_index = len(faces)
             faces.extend(f)
             col_i.extend(c)
 
@@ -190,6 +194,7 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
             name=f"{n}/{m} pseudo-cupolaic prismatoid",
         )
 
+        self.crossed_squares_use_outlines()
         if not self.allow_holes:
             self.use_outlines()
 
@@ -271,12 +276,26 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
         return vs
 
     def use_outlines(self):
-        """Raplace the n-grams by there outlines to prevent holes."""
+        """Replace the n-grams by there outlines to prevent holes."""
         face_index = 0
         for base in self.bases:
             for _ in range(base.no_of_compounds):
                 self.replace_face_by_outline(face_index, self.exp_tol_eq_float)
                 face_index += 1
+
+    def crossed_squares_use_outlines(self):
+        """Replace the crossed rectangles by there outlines to flashing."""
+        for i in range(self.n):
+            self.replace_face_by_outline(
+                self._pcp_data.crossed_squares_index + i, self.exp_tol_eq_float
+            )
+        if self.m == self.p:
+            for i in range(self.n):
+                face_id = self._pcp_data.slanted_faces_index + i
+                self.replace_face_by_outline(face_id, self.exp_tol_eq_float)
+                # When the trapezoids become crossed rectangles and the outline is taken then need
+                # to be reversed for the normal to point outwards.
+                self.reverse_face(face_id)
 
     def _primary_base_index(self, index):
         "Ensure a vertex index is from the primary base."
