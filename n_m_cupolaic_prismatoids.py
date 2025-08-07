@@ -73,21 +73,6 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
         """
         if n < 3:
             raise ValueError("n must be bigger than 3")
-        if p == n:
-            # pseudo-base should have even m
-            if m % 2 != 0:
-                raise ValueError(f"Expected an even m for a PCP with pseudo-base, got m={m}")
-        else:
-            # 2 bases
-            if not 0 < m < n:
-                raise ValueError(f"Make sure that 0 < m < n, got m = {m} and n = {n}")
-            m_low = n - m if m > n / 2 else m
-            if not m_low <= p <= n - m_low:
-                raise ValueError(f"Make sure that {m_low} <= p <= {n - m_low}, got p={p}")
-            if (p - m_low) % 2 != 0:
-                raise ValueError("Invalid difference between m and p")
-            if m_low == m and p != m:
-                raise ValueError(f"Invalid m and p: did you mean m = {n - m}?")
 
         self.n = n
         self.m = m
@@ -95,11 +80,29 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
         self.crossed_squares = crossed_squares
         self.allow_holes = allow_holes
 
-        self.n_is_even = n % 2 == 0
-        self.m_low = n - m if m > n / 2 else m
-        self.m_first_half = m <= n / 2
-        self.p_low = n - p if p > n / 2 else p
-        self.pseudo_base = p == n
+        m_low = min(m, n - m)
+        p_low = min(p, n - p)
+
+        if p == n:
+            # pseudo-base should have even m
+            if m % 2 != 0:
+                raise ValueError(f"Expected an even m for a PCP with pseudo-base, got m={m}")
+        else:
+            p_delta_m_low = p - m_low
+
+            # 2 bases
+            if not 0 < m < n:
+                raise ValueError(f"Make sure that 0 < m < n, got m = {m} and n = {n}")
+            m_low = n - m if m > n / 2 else m
+            if not m_low <= p <= n - m_low:
+                raise ValueError(f"Make sure that {m_low} <= p <= {n - m_low}, got p={p}")
+            if p_delta_m_low % 2 != 0:
+                raise ValueError("Invalid difference between m and p")
+            if m_low == m and p != m:
+                raise ValueError(f"Invalid m and p: did you mean m = {n - m}?")
+
+        # opposite value of m in the modulo-n group
+        self.m_opp = n - m
 
         # any data for this pseudo cupolaic prismatoid
         self._pcp_data = Object()
@@ -111,29 +114,42 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
         self.bases[0].no_of_compounds = gcd(n, m)
         # The number of vertices per sub-polygon:
         self.bases[0].no_of_vs_x_gram = n // self.bases[0].no_of_compounds
-        self.bases[0].v_distance = self.m_low
+        # always draw in one correction to make it easy to decide the face normal
+        self.bases[0].v_distance = m_low
 
+        self.pseudo_base = p == n
         if self.bases[0].no_of_vs_x_gram == 2 and self.pseudo_base:
             LOGGER.info("The provided values for n (%d) and m (%d) lead to digons", n, m)
 
         # Calculate the length of the diagonal. This assumes the side of the n-gon has length 2
         self.bases[0].diagonal = 2 * self._pcp_data.radius * sin(self.bases[0].v_distance * pi / n)
 
-        # The crossed rectangles also follow some diagonal in the {n}-gram which results in a
-        # {n/to_top_offset}-gram
+        # The crossed rectangles also follow some diagonal in the {n/q}-polygon which results in a
+        # {n/to_secondary_offset} polygon, secondary as in secondary base
         if self.pseudo_base:
-            self._pcp_data.to_top_offset = m // 2
+            self._pcp_data.to_secondary_offset = m // 2
+            m_first_half = m <= n / 2
+            if not m_first_half:
+                self._pcp_data.to_secondary_offset = -self._pcp_data.to_secondary_offset
         else:
-            # FIXME:
-            self._pcp_data.to_top_offset = (p - m) // 2
-        # For the second half we turn in the opposite direction
-        # FIXME:
-        if not self.m_first_half:
-            self._pcp_data.to_top_offset = -self._pcp_data.to_top_offset
+            offset = (p - self.m_opp) % n
+            # should have been taken care of above, so this shouldn't be a problem
+            assert offset % 2 == 0, f"p - (n - m) = {offset} should be even"
+            # to_secondary_offset is the δ in pcp_notes.txt
+            self._pcp_data.to_secondary_offset = offset // 2
+
+        # The length of the rectangular hull of the crossed rectangle, which is an n/q diagonal
+        self._pcp_data.crossed_diagonal = abs(
+            2 * self._pcp_data.radius * sin(self._pcp_data.to_secondary_offset * pi / self.n)
+        )
 
         if self.pseudo_base:
             self._pcp_data.half_height = self._get_half_height_pseudo_base()
         else:
+            self.bases.append(Object())
+            self.bases[1].v_distance = p_low
+            self.bases[1].no_of_compounds = gcd(self.n, p)
+            self.bases[1].no_of_vs_x_gram = self.n // self.bases[1].no_of_compounds
             self._pcp_data.half_height = self._get_half_height_double_base()
 
         vertices = self._get_vertices()
@@ -153,17 +169,6 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
             faces.extend(f)
             col_i.extend(c)
         else:
-            self.bases.append = Object()
-            if self.m_first_half:
-                self.bases[1].v_distance = self.bases[0].v_distance - 2
-            else:
-                self.bases[1].v_distance = self.bases[0].v_distance + 2
-            self.bases[1].no_of_compounds = gcd(
-                self.n,
-                min(self.bases[1].v_distance, self.n - self.bases[1].v_distance),
-            )
-            self.bases[1].no_of_vs_x_gram = self.n // self.bases[1].no_of_compounds
-
             f, c = self.get_n_m_gram(1, False)
             faces.extend(f)
             col_i.extend(c)
@@ -188,24 +193,22 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
 
     def _get_half_height_pseudo_base(self):
         """Calculate the height of the polyhedron using a pseudo-base."""
-        # This gives the following length for the crossed rectangle width (the larger value)
-        crossed_diagonal = abs(
-            2 * self._pcp_data.radius * sin(self._pcp_data.to_top_offset * pi / self.n)
-        )
         if not self.crossed_squares:
-            assert geomtypes.FloatHandler.gt(self.bases[0].diagonal, crossed_diagonal), (
+            assert geomtypes.FloatHandler.gt(
+                self.bases[0].diagonal, self._pcp_data.crossed_diagonal
+            ), (
                 "It is not possible to get equilateral triangles, e.g. the polyhedron might "
                 "become completely flat. Try the option with crossed squares instead"
             )
-            half_height = sqrt(self.bases[0].diagonal**2 - crossed_diagonal**2) / 2
+            half_height = sqrt(self.bases[0].diagonal**2 - self._pcp_data.crossed_diagonal**2) / 2
         else:
-            half_height = crossed_diagonal / 2  # half edge length
+            half_height = self._pcp_data.crossed_diagonal / 2  # half edge length
         return half_height
 
     def _get_half_height_double_base(self):
         """Calculate the height of the polyhedron with a double base."""
         if self.crossed_squares:
-            half_height = 1
+            half_height = self._pcp_data.crossed_diagonal / 2
         else:
             #        ______________
             #       /              \
@@ -273,6 +276,14 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
                 self.replace_face_by_outline(face_index, self.exp_tol_eq_float)
                 face_index += 1
 
+    def _primary_base_index(self, index):
+        "Ensure a vertex index is from the primary base."
+        return index % self.n
+
+    def _secondary_base_index(self, index):
+        "Ensure a vertex index is from the secondary base."
+        return index % self.n + self.n
+
     def get_n_m_gram(self, offset, opposite_direction):
         """Get a tuple with face and colour indices for the {n/m}-gram
 
@@ -286,7 +297,9 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
         """
         n_gram = self.bases[offset]
         inv = -1 if opposite_direction else 1
-        if self.n_is_even and n_gram.no_of_vs_x_gram == 2:
+        v_index = [self._primary_base_index, self._secondary_base_index][offset]
+        n_is_even = self.n % 2 == 0
+        if n_is_even and n_gram.no_of_vs_x_gram == 2:
             # E.g. this is a {10/5} i.e. 5 digons. For n is even these become edges where the
             # isosceles rectangles meet.
             n_gram.no_of_compounds = 0
@@ -296,7 +309,7 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
             # handle e.g. that {9/3} consists of three triangles
             faces = [
                 [
-                    (m + inv * i * n_gram.v_distance) % self.n + offset
+                    v_index(m + inv * i * n_gram.v_distance)
                     for i in range(n_gram.no_of_vs_x_gram)
                 ]
                 for m in range(n_gram.no_of_compounds)
@@ -304,36 +317,11 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
             col_i = [self.n_gram_col for m in range(n_gram.no_of_compounds)]
         else:
             faces = [
-                [(inv * i * n_gram.v_distance) % self.n + offset for i in range(self.n)]
+                [v_index(inv * i * n_gram.v_distance) for i in range(self.n)]
             ]
             col_i = [self.n_gram_col]
 
         return faces, col_i
-
-    def _get_crossed_rectangles_pseudo_base(self):
-        """Get a tuple with face and colour indices for the vertical crossed rectangles."""
-        faces = [
-            [
-                i,
-                i + self.n,
-                (i + self._pcp_data.to_top_offset) % self.n,
-                (i + self._pcp_data.to_top_offset) % self.n + self.n
-            ] for i in range(self.n)
-        ]
-        return faces, [self.crossed_col for _ in range(self.n)]
-
-    def _get_crossed_rectangles_double_base(self):
-        """Get a tuple with face and colour indices for the vertical crossed rectangles."""
-        # Currently along the prism side: FIXME: make this generally correct
-        faces = [
-            [
-                i,
-                i + self.n,
-                (i + 1) % self.n,
-                (i + 1) % self.n + self.n
-            ] for i in range(self.n)
-        ]
-        return faces, [self.crossed_col for _ in range(self.n)]
 
     def _get_slanted_faces_pseudo_base(self):
         """Get a tuple with face and colour indices for the slanted faces."""
@@ -342,24 +330,52 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
             [
                 i,
                 (i + self.bases[0].v_distance) % self.n,
-                (i + self._pcp_data.to_top_offset) % self.n + self.n,
+                (i + self._pcp_data.to_secondary_offset) % self.n + self.n,
             ]
             for i in range(self.n)
         ]
         return faces, [self.slanted_col for _ in range(self.n)]
 
-    def _get_slanted_faces_double_base(self):
-        """Get a tuple with face and colour indices for the slanted faces."""
-        # Use isosceles (or trisosceles) trapezoids
+    def _get_crossed_rectangles_pseudo_base(self):
+        """Get a tuple with face and colour indices for the vertical crossed rectangles."""
         faces = [
             [
                 i,
-                (i + 1) % self.n + self.n,
-                (i + self.m - 1) % self.n + self.n,
-                (i + self.m) % self.n,
+                i + self.n,
+                (i + self._pcp_data.to_secondary_offset) % self.n,
+                (i + self._pcp_data.to_secondary_offset) % self.n + self.n
+            ] for i in range(self.n)
+        ]
+        return faces, [self.crossed_col for _ in range(self.n)]
+
+    def _get_slanted_faces_double_base(self):
+        """Get a tuple with face and colour indices for the slanted faces."""
+        # Use isosceles (or trisosceles) trapezoids
+        # See file pcp_notes.txt to understand how these values are obtained:
+        faces = [
+            [
+                self._primary_base_index(i),
+                self._primary_base_index(i + self.m),
+                self._secondary_base_index(i + self.m - self._pcp_data.to_secondary_offset),
+                self._secondary_base_index(
+                    i + self.m - self._pcp_data.to_secondary_offset + self.p
+                ),
             ] for i in range(self.n)
         ]
         return faces, [self.slanted_col for _ in range(self.n)]
+
+    def _get_crossed_rectangles_double_base(self):
+        """Get a tuple with face and colour indices for the vertical crossed rectangles."""
+        # See file pcp_notes.txt to understand how these values are obtained:
+        faces = [
+            [
+                self._primary_base_index(i + self.m),
+                self._secondary_base_index(i + self.m - self._pcp_data.to_secondary_offset),
+                self._primary_base_index(i + self.m - self._pcp_data.to_secondary_offset),
+                self._secondary_base_index(i + self.m),
+            ] for i in range(self.n)
+        ]
+        return faces, [self.crossed_col for _ in range(self.n)]
 
 
 if __name__ == "__main__":
