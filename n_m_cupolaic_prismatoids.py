@@ -1,6 +1,7 @@
 """Script to generate a cupalaic prismatoid based on a {n/m}-gram"""
 import argparse
 import logging
+import os
 from pathlib import Path
 import sys
 
@@ -403,19 +404,32 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument("n", type=int, help="Number of vertices of the {n/m}-polygon.")
     parser.add_argument(
-        "m",
+        "-m",
         type=int,
-        help="Vertex offset of the primary base polygon {n/m}. Use m > n/2 for retrograde "
-        "connecting faces.",
+        default=0,
+        help="Vertex offset of the primary base polygon {n/m}. Use m > n/2 for "
+        "connecting faces that fold inwards. "
+        "If not specified then all PCPs for the specified value of 'n' are generated.",
     )
-    # TODO: option to generate all? What abould filename?
     parser.add_argument(
-        "p",
+        "-p",
         type=int,
-        help="Vertex offset of the secondary base polygon {n/p}. Use m > n/2 for retrograde "
-        "connecting faces or p = n for pseudo-base",
+        default=0,
+        help="Vertex offset of the secondary base polygon {n/p}. Use m > n/2 for "
+        "connecting faces that fold inwards or p = n for pseudo-base. "
+        "If not specified then all PCPs for the specified value of 'n' and 'm' are generated.",
     )
-    parser.add_argument("filename", help="Path to the off file to be save.")
+    parser.add_argument(
+        "-f", "--file_base_name",
+        default="pcp_",
+        help="A header to name the file. This will be used as a base for the OFF file. "
+        "It will be appended by n_m__n_p.off."
+    )
+    parser.add_argument(
+        "-o", "--out_dir",
+        default=".",
+        help="path to directory to save the resulting OFF file(s)."
+    )
     parser.add_argument(
         "-H", "--allow_holes",
         action="store_true",
@@ -441,20 +455,51 @@ if __name__ == "__main__":
         help="Rotate the model a certain amount of degrees around the x-axis."
     )
     args = parser.parse_args()
-    shape = PseudoCupolaicPrismatoid(args.n, args.m, args.p, args.crossed_squares, args.allow_holes)
 
-    if args.x_rotate:
-        shape.transform(
-            geomtypes.Rot3(angle=geom.DEG2RAD * args.x_rotate, axis=geomtypes.Vec3([1, 0, 0]))
-        )
+    if os.path.exists(args.out_dir):
+        if not os.path.isdir(args.out_dir):
+            raise ValueError(
+                f"The output directory {args.out_dir} exists, but isn't a valid directory"
+            )
+    else:
+        os.mkdir(args.out_dir)
 
-    filepath = Path(args.filename)
-    if not args.overwrite and filepath.is_file():
-        yes_or_no = input(f"{filepath} exists. Overwrite? y/N\n")
-        if not yes_or_no or yes_or_no.lower()[0] != "y":
-            LOGGER.warning("No overwrite requested; bailing out")
-            sys.exit(1)
 
-    with open(args.filename, "w") as fd:
-        fd.write(shape.to_off())
-        LOGGER.info("Written %s", filepath)
+    def generate_one_pcp(args, m, p):
+        """Generate one PCP for the specified value of p using args and save as OFF file."""
+        try:
+            shape = PseudoCupolaicPrismatoid(args.n, m, p, args.crossed_squares, args.allow_holes)
+        except AssertionError:
+            shape = PseudoCupolaicPrismatoid(args.n, m, p, True, args.allow_holes)
+
+        if args.x_rotate:
+            shape.transform(
+                geomtypes.Rot3(angle=geom.DEG2RAD * args.x_rotate, axis=geomtypes.Vec3([1, 0, 0]))
+            )
+
+        filepath = Path(args.out_dir) / f"pcp_{args.n}_{m}__{args.n}_{p}.off"
+        if not args.overwrite and filepath.is_file():
+            yes_or_no = input(f"{filepath} exists. Overwrite? y/N\n")
+            if not yes_or_no or yes_or_no.lower()[0] != "y":
+                LOGGER.warning("No overwrite requested; bailing out")
+                sys.exit(1)
+
+        with open(filepath, "w") as fd:
+            minimized_shape = shape.clean_shape(shape.exp_tol_eq_float)
+            fd.write(minimized_shape.to_off())
+            LOGGER.info("Written %s", filepath)
+
+    if args.m and args.p:
+        m_p_values = [(args.m, args.p)]
+    else:
+        if args.m:
+            m_values = [args.m]
+        else:
+            m_p_values = [
+                (m if m == p else args.n - m, p)
+                for m in range(1, args.n // 2 + 1)
+                for p in range(m, args.n - m + 1, 2)
+            ]
+
+    for m, p in m_p_values:
+        generate_one_pcp(args, m, p)

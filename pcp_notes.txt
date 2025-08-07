@@ -197,6 +197,41 @@ For {7/2} the only valid values for p are 2, 4:
       5, 4+n, 4, 5+n
       ==> more general: i+m, i+m-δ + n, i+m-δ+p, i+m-δ+p + n
 
+7/3 | 7/3
+---------
+            0
+        __--'--__
+  1.--''         ''--.6
+   '                 '
+  /                   \
+  '                   `
+ /                     \
+2'.                   .'5
+   '.               .'
+     '.___________.'
+      3           4
+
+    * m <= n/2 indicates that dihedral angle between {n/m} polygon and face is >= 90°
+      p <= n/2 indicates that dihedral angle between {n/p} polygon and face is >= 90°
+    * here following the trapezoid edges the edge shared with the {n/m} will
+      follow the same direction as the one shared with {n/p} polygon. Hence it
+      makes sense that both m, p <= n/2
+    * m = 3
+    * p = 3
+    * m_opp = 4
+    * ofset = p - m_opp = -1 -> modulo n -> 6
+    * δ = offset / 2 = 3
+    * polygon bases: {7/3} and {7/3}
+    * trapezoids:
+      0, 3, 0+n, 3+n
+      1, 4, 1+n, 4+n
+      etc
+      ==> more general: i, i+3, i+3-3 + n, i+3-3+3 + n
+      ==> more general: i, i+m, i+m-δ + n, i+m-δ+p + n
+    * crossed rectangles:
+      2, 0+n, 0, 2+n
+      ==> more general: i+m, i+m-δ + n, i+m-δ+p, i+m-δ+p + n
+
 =====================
 = Example 8/n | 8/m =
 =====================
