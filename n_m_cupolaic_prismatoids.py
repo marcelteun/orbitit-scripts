@@ -56,7 +56,10 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
     crossed_col = 1
     slanted_col = 2
 
-    def __init__(self, n, m, p, crossed_squares, allow_holes):
+    scaling_slanted = "slanted"
+    scaling_vertical = "vertical"
+
+    def __init__(self, n, m, p, allow_holes, scaling=None):
         """Initialise object
 
         This will create a pseudo-cupoalic prismatoid with bases {n/m} and {n/p}.
@@ -66,8 +69,12 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
         n: amount of vertices in the bases
         m: the number m in the primary base {n/m} with m < n/2.
         p: the number p in the secondary base {n/p} with m < n/2. Use p = n to get a pseudo-base.
-        crossed_squares: whether to use crossed squares. If False then either equilateral triangles
-            (for p = n) or trisosceles trapezoids will be used
+        scaling: This affects the scaling of the height of the PCP.
+            It either evaluates to False or equals to 'slanted' or 'vertical'. For the 'vertical'
+            the height will be scaled so that the crossed rectangles so they fit in a square. For
+            the 'slanted' it will try to scale in such a way that the slanted faces attached to a
+            polygon base through an edge has three edges with the same length. Note that this isn't
+            always possible and it might result in an error.
         allow_holes: if set to True then the {n/n}-gram(s) will be replaced by a polygon following
             the outline. If set to False the polygon will follow the n edges, which might not be
             shown well in a 3D player, e.g. holes might appear at parts that have even coverage.
@@ -78,7 +85,7 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
         self.n = n
         self.m = m
         self.p = p
-        self.crossed_squares = crossed_squares
+        self.scaling = scaling
         self.allow_holes = allow_holes
 
         self.pseudo_base = p == n
@@ -203,23 +210,31 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
 
     def _get_half_height_pseudo_base(self):
         """Calculate the height of the polyhedron using a pseudo-base."""
-        if not self.crossed_squares:
-            assert geomtypes.FloatHandler.gt(
+        scaling = self.scaling
+        if scaling != self.scaling_vertical:
+            cannot_do_slanted = geomtypes.FloatHandler.le(
                 self.bases[0].diagonal, self._pcp_data.crossed_diagonal
-            ), (
-                "It is not possible to get equilateral triangles, e.g. the polyhedron might "
-                "become completely flat. Try the option with crossed squares instead"
             )
-            half_height = sqrt(self.bases[0].diagonal**2 - self._pcp_data.crossed_diagonal**2) / 2
-        else:
+            if cannot_do_slanted:
+                if self.scaling == self.scaling_slanted:
+                    raise ValueError(
+                        "It is not possible to get equilateral triangles, e.g. the polyhedron "
+                        f"might become completely flat. Try the option '{self.scaling_vertical}' "
+                        "scaling instead"
+                    )
+                scaling = self.scaling_vertical
+
+        if scaling == self.scaling_vertical:
             half_height = self._pcp_data.crossed_diagonal / 2  # half edge length
+        else:
+            half_height = sqrt(self.bases[0].diagonal**2 - self._pcp_data.crossed_diagonal**2) / 2
         return half_height
 
     def _get_half_height_double_base(self):
         """Calculate the height of the polyhedron with a double base."""
-        if self.crossed_squares:
-            half_height = self._pcp_data.crossed_diagonal / 2
-        else:
+        scaling = self.scaling
+        if scaling != self.scaling_vertical:
+
             #        ______________
             #       /              \
             #      /                \
@@ -241,14 +256,23 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
                 root = half_crossed_square_diagonal**2 - 1
                 if geomtypes.FloatHandler.gt(root, 0):
                     roots.append(sqrt(root))
-            assert roots, (
-                "It is not possible to get equilateral triangles, e.g. the polyhedron might "
-                "become completely flat. Try with crossed squares instead"
-            )
+
+            if not roots:
+                if self.scaling == self.scaling_slanted:
+                    raise ValueError(
+                        "It is not possible to get equilateral triangles, e.g. the polyhedron "
+                        f"might become completely flat. Try the option '{self.scaling_vertical}' "
+                        "scaling instead"
+                    )
+                scaling = self.scaling_vertical
+
+        if scaling == self.scaling_vertical:
+            half_height = self._pcp_data.crossed_diagonal / 2
+        else:
             # For now use the minimum
             # TODO: decide how to handle (command line parameter?)
-            LOGGER.info("Possible heights: %s", roots)
             half_height = min(roots)
+            LOGGER.info("Possible heights: %s, using %s", roots, half_height)
         return half_height
 
     def _get_vertices(self):
@@ -403,6 +427,10 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
 
 
 if __name__ == "__main__":
+
+    SCALE_1 = PseudoCupolaicPrismatoid.scaling_slanted
+    SCALE_2 = PseudoCupolaicPrismatoid.scaling_vertical
+
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument("n", type=int, help="Number of vertices of the {n/m}-polygon.")
     parser.add_argument(
@@ -439,10 +467,13 @@ if __name__ == "__main__":
         "in orbitit for the parts that have even coverage due to the stencil buffer.",
     )
     parser.add_argument(
-        "-s", "--crossed_squares",
-        action="store_true",
-        help="If specified the {n/m} polygon will be kept as is, which results in holes in orbitit "
-        "for a 3D player using a stencil buffer."
+        "-s", "--scaling",
+        help=f"This parameter affect the scaling of the height of the PCP. "
+        f"If specified this should either be '{SCALE_1}' or '{SCALE_2}'. "
+        "For the latter the program fit the crossed rectangles so they fit in a square. "
+        "For the former it will try to scale in such a way that the slanted faces attached to a "
+        "polygon base through an edge has three edges with the same length. "
+        "Note that this isn't always possible and it might result in an error."
     )
     parser.add_argument(
         "-w", "--overwrite",
@@ -466,13 +497,18 @@ if __name__ == "__main__":
     else:
         os.mkdir(args.out_dir)
 
+    if args.scaling and not args.scaling in [
+        PseudoCupolaicPrismatoid.scaling_slanted,
+        PseudoCupolaicPrismatoid.scaling_vertical,
+    ]:
+        raise ValueError(
+            f"--scaling should be either 'squared' or 'trisosceles', git {args.scaling}"
+        )
+
 
     def generate_one_pcp(args, m, p):
         """Generate one PCP for the specified value of p using args and save as OFF file."""
-        try:
-            shape = PseudoCupolaicPrismatoid(args.n, m, p, args.crossed_squares, args.allow_holes)
-        except AssertionError:
-            shape = PseudoCupolaicPrismatoid(args.n, m, p, True, args.allow_holes)
+        shape = PseudoCupolaicPrismatoid(args.n, m, p, args.allow_holes, args.scaling)
 
         if args.x_rotate:
             shape.transform(
