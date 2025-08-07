@@ -401,6 +401,10 @@ class PcpPseudoTwoBases(PcpBase):
         if m == p and n == 2 * m:
             raise ValueError(f"Cannot generate PCP {n}/{m} | {n}/{p} with two digon bases")
 
+        # make vertical scaling the default
+        if not scaling:
+            scaling = self.scaling_vertical
+
         PcpBase.__init__(self, n, m, p, allow_holes, scaling)
 
     def _calc_to_secondary_offset(self):
@@ -595,7 +599,7 @@ if __name__ == "__main__":
         PcpBase.scaling_vertical,
     ]:
         raise ValueError(
-            f"--scaling should be either 'squared' or 'trisosceles', git {ARGS.scaling}"
+            f"--scaling should be either '{SCALE_1}' or '{SCALE_2}', got {ARGS.scaling}"
         )
 
 
