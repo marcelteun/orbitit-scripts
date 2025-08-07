@@ -1,4 +1,4 @@
-# Script to generate a cupalaic prismatoid based on a {n/m}-gram
+"""Script to generate a cupalaic prismatoid based on a {n/m}-gram"""
 import argparse
 import logging
 from pathlib import Path
@@ -80,10 +80,11 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
         self.crossed_squares = crossed_squares
         self.allow_holes = allow_holes
 
+        self.pseudo_base = p == n
         m_low = min(m, n - m)
         p_low = min(p, n - p)
 
-        if p == n:
+        if self.pseudo_base:
             # pseudo-base should have even m
             if m % 2 != 0:
                 raise ValueError(f"Expected an even m for a PCP with pseudo-base, got m={m}")
@@ -117,8 +118,9 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
         # always draw in one correction to make it easy to decide the face normal
         self.bases[0].v_distance = m_low
 
-        self.pseudo_base = p == n
-        if self.bases[0].no_of_vs_x_gram == 2 and self.pseudo_base:
+        if self.bases[0].no_of_vs_x_gram == 2:
+            if m == p:
+                raise ValueError("Invalid values leading to two bases with digons")
             LOGGER.info("The provided values for n (%d) and m (%d) lead to digons", n, m)
 
         # Calculate the length of the diagonal. This assumes the side of the n-gon has length 2
