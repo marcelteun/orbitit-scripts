@@ -121,7 +121,9 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
 
         if self.bases[0].no_of_vs_x_gram == 2:
             if m == p:
-                raise ValueError("Invalid values leading to two bases with digons")
+                raise ValueError(
+                    f"Cannot generate PCP {n}/{m} | {n}/{p} with two digon bases"
+                )
             LOGGER.info("The provided values for n (%d) and m (%d) lead to digons", n, m)
 
         # Calculate the length of the diagonal. This assumes the side of the n-gon has length 2
@@ -499,7 +501,10 @@ if __name__ == "__main__":
                 (m if m == p else args.n - m, p)
                 for m in range(1, args.n // 2 + 1)
                 for p in range(m, args.n - m + 1, 2)
+                # if not double digons
+                if not(args.n / m == 2 and p == m)
             ]
 
     for m, p in m_p_values:
-        generate_one_pcp(args, m, p)
+        if not(args.n / m == 2 and p == m):
+            generate_one_pcp(args, m, p)
