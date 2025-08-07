@@ -498,11 +498,15 @@ if __name__ == "__main__":
             m_values = [args.m]
         else:
             m_p_values = [
+                # two polygon bases:
                 (m if m == p else args.n - m, p)
                 for m in range(1, args.n // 2 + 1)
                 for p in range(m, args.n - m + 1, 2)
                 # if not double digons
                 if not(args.n / m == 2 and p == m)
+            ] + [
+                # one polygon base and a pseudo-base
+                (m, args.n) for m in range(2, args.n, 2)
             ]
 
     for m, p in m_p_values:
