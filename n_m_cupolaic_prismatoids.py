@@ -158,7 +158,7 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
             self._pcp_data.half_height = self._get_half_height_double_base()
 
         vertices = self._get_vertices()
-        faces, col_i = self.get_n_m_gram(0, True)
+        faces, col_i = self.get_n_m_gram(0, False)
 
         # TODO: use four classes:
         # 1. shared abstract base class
@@ -176,7 +176,7 @@ class PseudoCupolaicPrismatoid(geom.SimpleShape):
             faces.extend(f)
             col_i.extend(c)
         else:
-            f, c = self.get_n_m_gram(1, False)
+            f, c = self.get_n_m_gram(1, True)
             faces.extend(f)
             col_i.extend(c)
 
