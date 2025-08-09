@@ -88,7 +88,7 @@ class PcpBase(PcpAbc, geom_3d.SimpleShape):
     scaling_slanted = "slanted"
     scaling_vertical = "vertical"
 
-    def __init__(self, n, m, p, allow_holes, scaling=None):
+    def __init__(self, n, m, p, use_outlines, scaling=None):
         """Initialise object
 
         This will create a pseudo-cupoalic prismatoid with bases {n/m} and {n/p}.
@@ -104,7 +104,7 @@ class PcpBase(PcpAbc, geom_3d.SimpleShape):
             the 'slanted' it will try to scale in such a way that the slanted faces attached to a
             polygon base through an edge has three edges with the same length. Note that this isn't
             always possible and it might result in an error.
-        allow_holes: if set to True then the {n/n}-gram(s) will be replaced by a polygon following
+        use_outlines: if set to True then the {n/m}-gram(s) will be replaced by a polygon following
             the outline. If set to False the polygon will follow the n edges, which might not be
             shown well in a 3D player, e.g. holes might appear at parts that have even coverage.
         """
@@ -117,7 +117,7 @@ class PcpBase(PcpAbc, geom_3d.SimpleShape):
         self.m = m
         self.p = p
         self.scaling = scaling
-        self.allow_holes = allow_holes
+        self.use_outlines = use_outlines
 
         m_low = min(m, n - m)
 
@@ -181,9 +181,9 @@ class PcpBase(PcpAbc, geom_3d.SimpleShape):
             name=f"{n}/{m} | {n} | {p} pseudo-cupolaic prismatoid",
         )
 
-        self.crossed_squares_use_outlines()
-        if not self.allow_holes:
-            self.use_outlines()
+        if self.use_outlines:
+            self.crossed_squares_use_outlines()
+            self.bases_use_outlines()
 
     def _add_2nd_base(self):
         """Possibly add secondary base."""
@@ -285,7 +285,7 @@ class PcpPseudoBase(PcpBase):
     n (equilateral) triangles.
     """
 
-    def __init__(self, n, m, allow_holes, scaling=None):
+    def __init__(self, n, m, use_outlines, scaling=None):
         """Initialise object
 
         n: amount of vertices in the bases
@@ -296,7 +296,7 @@ class PcpPseudoBase(PcpBase):
             the 'slanted' it will try to scale in such a way that the slanted faces attached to a
             polygon base through an edge has three edges with the same length. Note that this isn't
             always possible and it might result in an error.
-        allow_holes: if set to True then the {n/n}-gram(s) will be replaced by a polygon following
+        use_outlines: if set to True then the {n/n}-gram(s) will be replaced by a polygon following
             the outline. If set to False the polygon will follow the n edges, which might not be
             shown well in a 3D player, e.g. holes might appear at parts that have even coverage.
         """
@@ -304,7 +304,7 @@ class PcpPseudoBase(PcpBase):
         if m % 2 != 0:
             raise ValueError(f"Expected an even m for a PCP with pseudo-base, got m={m}")
 
-        PcpBase.__init__(self, n, m, n, allow_holes, scaling)
+        PcpBase.__init__(self, n, m, n, use_outlines, scaling)
 
     def _calc_to_secondary_offset(self):
         to_secondary_offset = self.m // 2
@@ -364,7 +364,7 @@ class PcpPseudoTwoBases(PcpBase):
     n trapezoids.
     """
 
-    def __init__(self, n, m, p, allow_holes, scaling=None):
+    def __init__(self, n, m, p, use_outlines, scaling=None):
         """Initialise object
 
         This will create a pseudo-cupoalic prismatoid with bases {n/m} and {n/p}.
@@ -380,7 +380,7 @@ class PcpPseudoTwoBases(PcpBase):
             the 'slanted' it will try to scale in such a way that the slanted faces attached to a
             polygon base through an edge has three edges with the same length. Note that this isn't
             always possible and it might result in an error.
-        allow_holes: if set to True then the {n/n}-gram(s) will be replaced by a polygon following
+        use_outlines: if set to True then the {n/n}-gram(s) will be replaced by a polygon following
             the outline. If set to False the polygon will follow the n edges, which might not be
             shown well in a 3D player, e.g. holes might appear at parts that have even coverage.
         """
@@ -405,7 +405,7 @@ class PcpPseudoTwoBases(PcpBase):
         if not scaling:
             scaling = self.scaling_vertical
 
-        PcpBase.__init__(self, n, m, p, allow_holes, scaling)
+        PcpBase.__init__(self, n, m, p, use_outlines, scaling)
 
     def _calc_to_secondary_offset(self):
         offset = (self.p - self.m_opp) % self.n
@@ -494,7 +494,7 @@ class PcpPseudoTwoBases(PcpBase):
         ]
         return faces, [self.slanted_col for _ in range(self.n)]
 
-def PseudoCupolaicPrismatoid(n, m, p, allow_holes, scaling=None):
+def PseudoCupolaicPrismatoid(n, m, p, use_outlines, scaling=None):
     """Return a the correct PCP class.
 
     This will create a pseudo-cupoalic prismatoid with bases {n/m} and {n/p}.
@@ -510,16 +510,16 @@ def PseudoCupolaicPrismatoid(n, m, p, allow_holes, scaling=None):
         the 'slanted' it will try to scale in such a way that the slanted faces attached to a
         polygon base through an edge has three edges with the same length. Note that this isn't
         always possible and it might result in an error.
-    allow_holes: if set to True then the {n/n}-gram(s) will be replaced by a polygon following
+    use_outlines: if set to True then the {n/n}-gram(s) will be replaced by a polygon following
         the outline. If set to False the polygon will follow the n edges, which might not be
         shown well in a 3D player, e.g. holes might appear at parts that have even coverage.
     """
     pseudo_base = p == n
 
     if pseudo_base:
-        pcp = PcpPseudoBase(n, m, allow_holes, scaling)
+        pcp = PcpPseudoBase(n, m, use_outlines, scaling)
     else:
-        pcp = PcpPseudoTwoBases(n, m, p, allow_holes, scaling)
+        pcp = PcpPseudoTwoBases(n, m, p, use_outlines, scaling)
     return pcp
 
 
@@ -561,7 +561,11 @@ if __name__ == "__main__":
         "-H", "--allow_holes",
         action="store_true",
         help="If specified the {n/m} polygon will saved using n vertices, which results in holes "
-        "in orbitit for the parts that have even coverage due to the stencil buffer.",
+        "in orbitit for the parts that have even coverage due to the stencil buffer. "
+        "If not specified the n/q polygons and the crossed rectangles will be replaced by their "
+        "outline, which results in OFF files where edges are broken and hence the will not have "
+        "an even amount of faces joining in each edge, which might result in warnings or errors "
+        "for some 3D programs.",
     )
     parser.add_argument(
         "-s", "--scaling",
@@ -605,7 +609,7 @@ if __name__ == "__main__":
 
     def generate_one_pcp(m, p):
         """Generate one PCP for the specified value of p using ARGS and save as OFF file."""
-        shape = PseudoCupolaicPrismatoid(ARGS.n, m, p, ARGS.allow_holes, ARGS.scaling)
+        shape = PseudoCupolaicPrismatoid(ARGS.n, m, p, not ARGS.allow_holes, ARGS.scaling)
 
         if ARGS.x_rotate:
             shape.transform(
