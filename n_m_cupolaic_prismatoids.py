@@ -182,8 +182,11 @@ class PcpBase(PcpAbc, geom_3d.SimpleShape):
         )
 
         if self.use_outlines:
+            LOGGER.info("Using outlines, OFF files will not load in Stella!")
             self.crossed_squares_use_outlines()
             self.bases_use_outlines()
+        else:
+            LOGGER.info("Not using outlines, OFF files might show holes in Orbitit!")
 
     def _add_2nd_base(self):
         """Possibly add secondary base."""
