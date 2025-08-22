@@ -260,7 +260,7 @@ class PcpBase(PcpAbc, geom_3d.SimpleShape):
 
         return faces, col_i
 
-    def use_outlines(self):
+    def bases_use_outlines(self):
         """Replace the n-grams by there outlines to prevent holes."""
         face_index = 0
         for base in self.bases:
