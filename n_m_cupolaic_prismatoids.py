@@ -550,10 +550,15 @@ if __name__ == "__main__":
         "If not specified then all PCPs for the specified value of 'n' and 'm' are generated.",
     )
     parser.add_argument(
-        "-f", "--file_base_name",
+        "-b", "--file_base_name",
         default="pcp_",
-        help="A header to name the file. This will be used as a base for the OFF file. "
+        help="A header to name of the file. This will be used as a base for the OFF file. "
         "It will be appended by n_m__n_p.off."
+    )
+    parser.add_argument(
+        "-t", "--file_tail_name",
+        default="",
+        help="A string to append to name of the file. This will be appended to 'n_m__n_p'."
     )
     parser.add_argument(
         "-o", "--out_dir",
@@ -622,7 +627,8 @@ if __name__ == "__main__":
                 )
             )
 
-        filepath = Path(ARGS.out_dir) / f"pcp_{ARGS.n}_{m}__{ARGS.n}_{p}.off"
+        model = f"{ARGS.n}_{m}__{ARGS.n}_{p}"
+        filepath = Path(ARGS.out_dir) / f"{ARGS.file_base_name}{model}{ARGS.file_tail_name}.off"
         if not ARGS.overwrite and filepath.is_file():
             yes_or_no = input(f"{filepath} exists. Overwrite? y/N\n")
             if not yes_or_no or yes_or_no.lower()[0] != "y":
