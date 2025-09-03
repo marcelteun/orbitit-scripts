@@ -91,7 +91,7 @@ class PcpBase(PcpAbc, geom_3d.SimpleShape):
     def __init__(self, n, m, p, use_outlines, scaling=None):
         """Initialise object
 
-        This will create a pseudo-cupoalic prismatoid with bases {n/m} and {n/p}.
+        This will create a pseudo-cupolaic prismatoid with bases {n/m} and {n/p}.
 
         Note that not all combinations of n, m and p will lead to valid PCP.
 
