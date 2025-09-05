@@ -228,6 +228,10 @@ class Cupola(geom_3d.SimpleShape):
                         with geomtypes.FloatHandler(4):
                             if geomtypes.FloatHandler.eq(fold_angle, 0):
                                 continue
+                            if geomtypes.FloatHandler.eq(fold_angle, pi):
+                                continue
+                            if geomtypes.FloatHandler.eq(fold_angle, -pi):
+                                continue
                         already_found = False
                         for solution in solutions:
                             with geomtypes.FloatHandler(self.exp_tol_eq_float):
