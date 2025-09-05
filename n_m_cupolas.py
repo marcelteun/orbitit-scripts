@@ -329,8 +329,20 @@ class Cupola(geom_3d.SimpleShape):
         edge_to_side_vertex = edge.to_point(side_sub[side_vertex]).normalise()
         edge_to_goal_vertex = edge.to_point(vertex).normalise()
         angle = acos(edge_to_side_vertex * edge_to_goal_vertex)
+        # try the angle:
         axis = edge.v.normalise()
         rotate = geomtypes.Rot3(axis=axis, angle=angle)
+        v = side_sub[side_vertex] - make_origin
+        v = rotate * v
+        v = v + make_origin
+        with geomtypes.FloatHandler(self.exp_tol_eq_float):
+            if not v == vertex:
+                rotate = geomtypes.Rot3(axis=axis, angle=-angle)
+                v = side_sub[side_vertex] - make_origin
+                v = rotate * v
+                v = v + make_origin
+                with geomtypes.FloatHandler(self.exp_tol_eq_float):
+                    assert v == vertex, "Expected to have mapped v on vertex by now"
         vs = [[v - make_origin for v in v_list] for v_list in vs]
         vs = [[rotate * v for v in v_list] for v_list in vs]
         vs = [[v + make_origin for v in v_list] for v_list in vs]
