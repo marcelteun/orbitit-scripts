@@ -89,7 +89,7 @@ class Cupola(geom_3d.SimpleShape):
 
     # When taking the outline of a concave polygon, use this exponent to decide whether two floats
     # are equal
-    exp_tol_eq_float = 8
+    exp_tol_eq_float = 7
 
     # colour indices from orbitit.colors.STD_COLORS
     base_col = 3
