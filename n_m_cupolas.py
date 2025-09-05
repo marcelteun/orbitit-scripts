@@ -60,20 +60,24 @@ def get_polygon(n, m, edge_length=2):
     #    |       v5     v2
     #     -----------+-------------> X
     no_of_compounds = gcd(n, m)
+    no_of_vs_x_gram = n // no_of_compounds
     if no_of_compounds > 1:
-        LOGGER.error("TODO: handle special case where {n/m} have a common divider")
-        # TODO handle: always return a list of lists
+        LOGGER.info("{%i/%i} has a common divider", n, m)
     vs = [
-        geom_3d.vec(
-            cos(m * i * TWO_PI / n),
-            sin(m * i * TWO_PI / n),
-            0,
-        ) for i in range(n)
+        [
+            geom_3d.vec(
+                cos((m * i + j) * TWO_PI / n),
+                sin((m * i + j) * TWO_PI / n),
+                0,
+            )
+            for i in range(no_of_vs_x_gram)
+        ]
+        for j in range(no_of_compounds)
     ]
 
-    diagonal = (vs[0] - vs[1]).norm()
+    diagonal = (vs[0][0] - vs[0][1]).norm()
     scale = edge_length / diagonal
-    return [scale * v for v in vs]
+    return [[scale * v for v in v_list] for v_list in vs]
 
 
 class Object:
@@ -137,21 +141,27 @@ class Cupola(geom_3d.SimpleShape):
             faces.append([offset + i for i in range(len(vs))])
             col_i.append(col)
 
+        def add_face_list(vs, col):
+            for list_of_v in vs:
+                add_face(list_of_v, col)
+
 
         # TODO: perhaps we should make this a compound shape
         base_vs = get_polygon(n, m)
-        add_face(base_vs, self.base_col)
+        add_face_list(base_vs, self.base_col)
 
         side_vs = get_polygon(n, p)
-        delta = (side_vs[2] - side_vs[0]).norm()
-        triangle = self._get_triangle(base_vs, delta)
+        side_sub = side_vs[0]
+        len_sub = len(side_sub)
+        assert len_sub > 2, "Digons not supported here"
+        delta = (side_sub[2 % len_sub] - side_sub[0]).norm()
+        triangle = self._get_triangle(base_vs[0], delta)
         for i in range(n):
             rotate = geomtypes.Rot3(axis=geom_3d.vec(0, 0, 1), angle=i * TWO_PI / n)
             add_face([rotate * v for v in triangle], self.triangle_col)
 
         # + 1: because the base has index 0
         triangle_next = faces[1 + m]
-        # TODO: remove this line, this value was ok while testing for 7 3 2
         triangle_next_top = vertices[triangle_next[2]]
 
         side_vs = self._attach_side(
@@ -164,7 +174,13 @@ class Cupola(geom_3d.SimpleShape):
 
         for i in range(n):
             rotate = geomtypes.Rot3(axis=geom_3d.vec(0, 0, 1), angle=i * TWO_PI / n)
-            add_face([rotate * v for v in side_vs], self.side_polygon_col)
+            add_face_list(
+                [
+                    [rotate * v for v in v_list]
+                    for v_list in side_vs
+                ],
+                self.side_polygon_col,
+            )
 
         super().__init__(
             vertices,
@@ -222,8 +238,7 @@ class Cupola(geom_3d.SimpleShape):
                             solutions.append(fold_angle)
             return solutions
 
-        # Powell seems to work best, it finds the minimum and the solution has high preicision
-        # TODO: there is another solution: around 2.6264758 radians (~150.5°) for 7 3 2
+        # Powell seems to work best, it finds the minimum and the solution has high precision
         # However the vertices don't fit for that one.
         solutions = _try_angles()
         if solutions:
@@ -272,48 +287,53 @@ class Cupola(geom_3d.SimpleShape):
     # TODO: perhaps this method can be static
     # A more general method would make sure that the distance to vertex gets a certain value, but
     # then minimize must be used (and there will be more than one solution)
-    def _attach_side(self, side_vs, side_edge, attach_to, side_vertex, vertex):
-        """Attach the an edge of side_vs to another edge and fold into correct position.
+    def _attach_side(self, side_vs, side_edge, attach_to, side_vertex, vertex, sub_index=0):
+        """Attach an edge of side_vs to a specified edge and fold into correct position.
 
-        side_vs: the vertices of the polygon to attach.
-        side_edge: two indices in side_vs specifying an edge to attach
+        side_vs: the vertices of the polygon to attach. This is a list of list to support {9/3} e.g.
+        side_edge: two indices in side_vs[sub_index] specifying an edge to attach
         attach_to: a list for two coordinates, where side_edge[0] shall be attached to the first
             coordinate in the list and side_edge[1] to the other one.
-        side_vertex: an index in side_vs different from the ones in side_edge. The face side_vs will
-            be folded over side_edge so that side_vertex will have a certain distance to vertex
+        side_vertex: an index in side_vs[sub_index] different from the ones in side_edge. The face
+            side_vs will be folded over side_edge so that side_vertex will have a certain distance
+            to vertex
         vertex: a coordinate to which side_vertex needs to be attaced
+        sub_index: the list of vertices in side_vs to use when attaching
 
         return: a new array of side_vs for the transformed face
         """
+        side_sub = side_vs[sub_index]
         i_v0 = side_edge[0]
         i_v1 = side_edge[1]
-        translate = attach_to[0] - side_vs[i_v0]
-        vs = [translate + v for v in side_vs]
+        translate = attach_to[0] - side_sub[i_v0]
+        vs = [[translate + v for v in v_list] for v_list in side_vs]
         # Rotate to get v1 attached to attach_to[1]
-        vec0 = vs[i_v1] - vs[i_v0]
+        side_sub = vs[sub_index]
+        vec0 = side_sub[i_v1] - side_sub[i_v0]
         vec0 = vec0.normalise()
         vec1 = attach_to[1] - attach_to[0]
         vec1 = vec1.normalise()
         angle = acos(vec0 * vec1)
         axis = vec0.cross(vec1)
         rotate = geomtypes.Rot3(axis=axis, angle=angle)
-        make_origin = vs[0]
-        vs = [v - make_origin for v in vs]
-        vs = [rotate * v for v in vs]
-        vs = [v + make_origin for v in vs]
+        make_origin = side_sub[i_v0]
+        vs = [[v - make_origin for v in v_list] for v_list in vs]
+        vs = [[rotate * v for v in v_list] for v_list in vs]
+        vs = [[v + make_origin for v in v_list] for v_list in vs]
         # Now rotate around side_edge to attach side_vertex to vertex
 
         # TODO: break out code and share (the part the translates and rotates)
-        edge = geom_3d.Line3D(vs[0], p1=vs[1])
+        side_sub = vs[sub_index]
+        edge = geom_3d.Line3D(side_sub[0], p1=side_sub[1])
         make_origin = edge.project(vertex)
-        edge_to_side_vertex = edge.to_point(vs[side_vertex]).normalise()
+        edge_to_side_vertex = edge.to_point(side_sub[side_vertex]).normalise()
         edge_to_goal_vertex = edge.to_point(vertex).normalise()
         angle = acos(edge_to_side_vertex * edge_to_goal_vertex)
         axis = edge.v.normalise()
         rotate = geomtypes.Rot3(axis=axis, angle=angle)
-        vs = [v - make_origin for v in vs]
-        vs = [rotate * v for v in vs]
-        vs = [v + make_origin for v in vs]
+        vs = [[v - make_origin for v in v_list] for v_list in vs]
+        vs = [[rotate * v for v in v_list] for v_list in vs]
+        vs = [[v + make_origin for v in v_list] for v_list in vs]
 
         return vs
 
