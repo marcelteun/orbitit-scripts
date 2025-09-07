@@ -79,6 +79,70 @@ def get_polygon(n, m, edge_length=2):
     scale = edge_length / diagonal
     return [[scale * v for v in v_list] for v_list in vs]
 
+def fold_to_fit(
+    fold_func,
+    distance_func,
+    precision=7,
+    method="Powell",
+    angle_domain=None,
+    angle_step=TWO_PI / 10,
+):
+    """Fold a face over one of its edges until a condition is met.
+
+    One example can be to fold a face until the distance to a vertex has a certain value.
+
+    fold_func: function accepting the fold angle as parameter and returns the vs for this fold.
+    distance_func: a function that returns the lowest value for when the condition is met. The
+        function will accept one parameter: angle. For the example, given above one could write a
+        function that returns the absolute difference between the actual distance and the required
+        distance.
+    precision: the amount of decimals for two floats, e.g. angles, to be interpreted as the same,
+    method: the minimize method to use, see ScipPy.optimize.
+        Powell seems to work best, it finds the minimum and the solution has high precision
+    angle_domain: a list with minimal and maximal angle in radians. If not specified, then all
+        angles between 0 and 2π will be used as initial guess for a fold angle.
+    angle_step: the increase in angle (in radians) when trying different angles in the domain as
+        initial guess.
+
+    return: a list of solutions. Each solution consists of a dictionary with keys "angle" and "vs",
+        where "angle" gives the angle in radians and "vs" contains the adjusted vertices from the
+        input parameter "vs".
+    """
+    solutions = []
+    if angle_domain is None:
+        angle_domain = [0, TWO_PI]
+    initial_guess = angle_domain[0]
+    while not initial_guess > angle_domain[1]:
+        result = minimize(distance_func, initial_guess, method=method)
+        if result.success:
+            for fold_angle in result.x.tolist():
+                # map angle to domain [-π, π)
+                fold_angle = (fold_angle + pi) % TWO_PI - pi
+                # Don't return angles where faces end up in the same plane
+                with geomtypes.FloatHandler(precision):
+                    if geomtypes.FloatHandler.eq(fold_angle, 0):
+                        continue
+                    if geomtypes.FloatHandler.eq(fold_angle, pi):
+                        continue
+                    if geomtypes.FloatHandler.eq(fold_angle, -pi):
+                        continue
+                # only add new solutions
+                already_found = False
+                for solution in solutions:
+                    with geomtypes.FloatHandler(precision):
+                        if geomtypes.FloatHandler.eq(fold_angle, solution["angle"]):
+                            already_found = True
+                            break
+                if not already_found:
+                    solutions.append(
+                        {
+                            "angle": fold_angle,
+                            "vs": fold_func(fold_angle),
+                        }
+                    )
+        initial_guess += angle_step
+    return solutions
+
 
 class Object:
     """Just a class to be able to add attributes to an object."""
@@ -207,54 +271,22 @@ class Cupola(geom_3d.SimpleShape):
         # the reflection to use to obtain the triangle next to vs[0].
         refl = geomtypes.Refl3(normal=base_vs[1] - base_vs[-1])
 
-        def how_close_when_folded(fold_angle):
-            """Return the difference between angle that is left and the angle that it needed.
+        solutions = fold_to_fit(
+            lambda a: [v0, v1, self._get_top_for_fold(vs, a)],
+            lambda a: abs(self._get_diff_for_fold(vs, a, refl) - delta),
+            precision=self.exp_tol_eq_float,
+        )
 
-            Only positive values are returned.
-            """
-            return abs(self._get_diff_for_fold(vs, fold_angle, refl) - delta)
-
-        def _try_angles(method="Powell"):
-            """Try angles"""
-            solutions = []
-            no_of_guesses = 10
-            angle_step = TWO_PI /  no_of_guesses
-            for i in range(no_of_guesses):
-                initial_guess = i * angle_step
-                result = minimize(how_close_when_folded, initial_guess, method=method)
-                if result.success:
-                    for fold_angle in result.x.tolist():
-                        fold_angle = (fold_angle + pi) % TWO_PI - pi
-                        with geomtypes.FloatHandler(4):
-                            if geomtypes.FloatHandler.eq(fold_angle, 0):
-                                continue
-                            if geomtypes.FloatHandler.eq(fold_angle, pi):
-                                continue
-                            if geomtypes.FloatHandler.eq(fold_angle, -pi):
-                                continue
-                        already_found = False
-                        for solution in solutions:
-                            with geomtypes.FloatHandler(self.exp_tol_eq_float):
-                                if geomtypes.FloatHandler.eq(fold_angle, solution):
-                                    already_found = True
-                                    break
-                        if not already_found:
-                            solutions.append(fold_angle)
-            return solutions
-
-        # Powell seems to work best, it finds the minimum and the solution has high precision
-        # However the vertices don't fit for that one.
-        solutions = _try_angles()
         if solutions:
             if len(solutions) > 1:
-                LOGGER.warning("Found %d solutions: %s!", len(solutions), solutions)
-                for angle in solutions:
-                    LOGGER.info("  %.2f degrees", angle * 180 / pi)
-            use_angle = solutions[
+                LOGGER.warning("Found %d solutions!", len(solutions))
+                for s in solutions:
+                    LOGGER.info("  %.2f degrees", s["angle"] * 180 / pi)
+            solution = solutions[
                 self._cupola_data.use_index if self._cupola_data.use_index < len(solutions) else 0
             ]
-            LOGGER.info("Using fold angle %.2f degrees", use_angle * 180 / pi)
-            return [v0, v1, self._get_top_for_fold(vs, use_angle)]
+            LOGGER.info("Using fold angle %.2f degrees", solution["angle"] * 180 / pi)
+            return solution["vs"]
         raise ValueError("Couldn't find a triangle fold to fit polygon")
 
     # TODO: make static?
