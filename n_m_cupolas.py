@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import sys
 
-from scipy.optimize import minimize
+from scipy.optimize import fsolve, minimize
 from orbitit.colors import STD_COLORS as cols
 from orbitit import geom_3d, geomtypes
 
@@ -38,36 +38,39 @@ TWO_PI = 2 * pi
 
 
 
-def get_polygon(n, m, edge_length=2):
+def get_polygon(n, m, edge_length=2, rotate=True):
     """Return a the base shape.
 
     The vertices are the vertices of an n-gon z = 0. The edges of the n/m gram will
     scaled to edge_length.
 
     edge_length: the required edge length
+    rotate: if this validates to True, then the first edge will be parallel to the Y-axis. Otherwise
+        the first vertex will be on the x-axis.
 
     return: a list with vertices (geomtypes.Vec3)
     """
     # E.g. {7/2}
-    #  Y ^
-    #    |           v0
-    #    |    v4            v3
-    #    |
-    #    +
-    #    |  v1                v6
-    #    |
-    #    |
-    #    |       v5     v2
-    #     -----------+-------------> X
+    #                           ^ X
+    #              v4           |
+    #       v1            v0    |
+    #                           |
+    #                           +
+    #     v5                v3  |
+    #                           |
+    #                           |
+    #          v2        v6     |
+    # Y <-----------+-----------
     no_of_compounds = gcd(n, m)
     no_of_vs_x_gram = n // no_of_compounds
     if no_of_compounds > 1:
         LOGGER.info("{%i/%i} has a common divider", n, m)
+    offset = m * pi / n if rotate else 0
     vs = [
         [
             geom_3d.vec(
-                cos((m * i + j) * TWO_PI / n),
-                sin((m * i + j) * TWO_PI / n),
+                cos((m * i + j) * TWO_PI / n - offset),
+                sin((m * i + j) * TWO_PI / n - offset),
                 0,
             )
             for i in range(no_of_vs_x_gram)
@@ -79,11 +82,14 @@ def get_polygon(n, m, edge_length=2):
     scale = edge_length / diagonal
     return [[scale * v for v in v_list] for v_list in vs]
 
+def translate_list_of_vs(list_of_vs, vector):
+    """Translate a list of list of Vec3 points."""
+    return [[v + vector for v in vs] for vs in list_of_vs]
+
 def fold_to_fit(
     fold_func,
     distance_func,
     precision=7,
-    method="Powell",
     angle_domain=None,
     angle_step=TWO_PI / 10,
 ):
@@ -97,8 +103,6 @@ def fold_to_fit(
         function that returns the absolute difference between the actual distance and the required
         distance.
     precision: the amount of decimals for two floats, e.g. angles, to be interpreted as the same,
-    method: the minimize method to use, see ScipPy.optimize.
-        Powell seems to work best, it finds the minimum and the solution has high precision
     angle_domain: a list with minimal and maximal angle in radians. If not specified, then all
         angles between 0 and 2π will be used as initial guess for a fold angle.
     angle_step: the increase in angle (in radians) when trying different angles in the domain as
@@ -113,34 +117,42 @@ def fold_to_fit(
         angle_domain = [0, TWO_PI]
     initial_guess = angle_domain[0]
     while not initial_guess > angle_domain[1]:
-        result = minimize(distance_func, initial_guess, method=method)
-        if result.success:
-            for fold_angle in result.x.tolist():
-                # map angle to domain [-π, π)
-                fold_angle = (fold_angle + pi) % TWO_PI - pi
-                # Don't return angles where faces end up in the same plane
-                with geomtypes.FloatHandler(precision):
-                    if geomtypes.FloatHandler.eq(fold_angle, 0):
-                        continue
-                    if geomtypes.FloatHandler.eq(fold_angle, pi):
-                        continue
-                    if geomtypes.FloatHandler.eq(fold_angle, -pi):
-                        continue
-                # only add new solutions
-                already_found = False
-                for solution in solutions:
-                    with geomtypes.FloatHandler(precision):
-                        if geomtypes.FloatHandler.eq(fold_angle, solution["angle"]):
-                            already_found = True
-                            break
-                if not already_found:
-                    solutions.append(
-                        {
-                            "angle": fold_angle,
-                            "vs": fold_func(fold_angle),
-                        }
-                    )
+        results = fsolve(distance_func, initial_guess)
         initial_guess += angle_step
+        for fold_angle in results:
+            # map angle to domain [-π, π)
+            fold_angle = (fold_angle + pi) % TWO_PI - pi
+            # Don't return angles where faces end up in the same plane
+            with geomtypes.FloatHandler(precision):
+                if geomtypes.FloatHandler.eq(fold_angle, 0):
+                    continue
+                if geomtypes.FloatHandler.eq(fold_angle, pi):
+                    continue
+                if geomtypes.FloatHandler.eq(fold_angle, -pi):
+                    continue
+                # For some reason sometimes the solutions isn't really a solutions,
+                # e.g. for {7/2} I got -0.9112721567972777 with distance ~= 0.28400
+                if geomtypes.FloatHandler.ne(distance_func(fold_angle), 0):
+                    continue
+            # only add new solutions
+            already_found = False
+            for solution in solutions:
+                with geomtypes.FloatHandler(precision):
+                    if geomtypes.FloatHandler.eq(fold_angle, solution["angle"]):
+                        already_found = True
+                        break
+            if not already_found:
+                LOGGER.debug(
+                    "Solution found for angle %0.2f (minimized distance %0.2f)",
+                    geom_3d.RAD2DEG * fold_angle,
+                    distance_func(fold_angle),
+                )
+                solutions.append(
+                    {
+                        "angle": fold_angle,
+                        "vs": fold_func(fold_angle),
+                    }
+                )
     return solutions
 
 
@@ -197,7 +209,8 @@ class Cupola(geom_3d.SimpleShape):
         col_i = []
 
         def add_face(vs, col):
-            if use_outlines:
+            """Add a face to the vertices, faces and col_i variables."""
+            if use_outlines and len(vs) > 3:
                 face = geom_3d.Face(vs)
                 vs = face.outline.vs
             offset = len(vertices)
@@ -206,45 +219,168 @@ class Cupola(geom_3d.SimpleShape):
             col_i.append(col)
 
         def add_face_list(vs, col):
+            """Add a list of faces to the vertices, faces and col_i variables."""
             for list_of_v in vs:
                 add_face(list_of_v, col)
 
-
-        # TODO: perhaps we should make this a compound shape
-        base_vs = get_polygon(n, m)
-        add_face_list(base_vs, self.base_col)
-
-        side_vs = get_polygon(n, p)
+        # TODO: move this into a method:
+        #######
+        #  1  #
+        #######
+        # Try to make a "half-hip roof" of two sides, using an equilateral triangle as hip.
+        side_vs = get_polygon(n, m)
         side_sub = side_vs[0]
         len_sub = len(side_sub)
         assert len_sub > 2, "Digons not supported here"
-        delta = (side_sub[2 % len_sub] - side_sub[0]).norm()
-        triangle = self._get_triangle(base_vs[0], delta)
-        for i in range(n):
-            rotate = geomtypes.Rot3(axis=geom_3d.vec(0, 0, 1), angle=i * TWO_PI / n)
-            add_face([rotate * v for v in triangle], self.triangle_col)
 
-        # + 1: because the base has index 0
-        triangle_next = faces[1 + m]
-        triangle_next_top = vertices[triangle_next[2]]
+        # translate origin to centre of first edge to construct the roof
+        make_origin = (side_sub[0] + side_sub[1]) / 2
+        side_vs_t = translate_list_of_vs(side_vs, -make_origin)
+        fold_axis = side_vs_t[0][1] - side_vs_t[0][0]
 
-        side_vs = self._attach_side(
-            side_vs,
-            [0, 1],
-            [triangle[1], triangle[2]],
-            -1,
-            triangle_next_top,
+        def fold_side(angle):
+            """Rotate side_vs_t around first edge by alpha radians and return new vs."""
+            rotate = geomtypes.Rot3(axis=fold_axis, angle=angle)
+            return [[rotate * v for v in v_list] for v_list in side_vs_t]
+
+        def get_distance(angle):
+            """Get how far off the distand is from the required distance of 2.
+
+            The distance that is used is the distance between third vertex and rotated third
+            vertex.
+            """
+            with geomtypes.FloatHandler(4):
+                if geomtypes.FloatHandler.ne(angle, 0):
+                    pass
+            v0 = side_vs_t[0][2]
+            v1 = geomtypes.Rot3(axis=fold_axis, angle=angle) * v0
+            distance = (v1 - v0).norm()
+            abs_diff = abs(distance - 2)
+            return abs_diff
+
+        LOGGER.info(
+            "Looking for fold angle to create half-hip roof of {%d/%d} (and triangle)",
+            self._cupola_data.m,
+            self._cupola_data.n,
         )
+        solutions = fold_to_fit(
+            fold_side,
+            get_distance,
+            precision=self.exp_tol_eq_float,
+        )
+        if not solutions:
+            LOGGER.error("No angle found to create a half-hip roof")
+            sys.exit(1)
 
-        for i in range(n):
-            rotate = geomtypes.Rot3(axis=geom_3d.vec(0, 0, 1), angle=i * TWO_PI / n)
-            add_face_list(
-                [
-                    [rotate * v for v in v_list]
-                    for v_list in side_vs
-                ],
-                self.side_polygon_col,
+        index = 0
+        if len(solutions) > 1:
+            LOGGER.info(
+                "Found %d solutions, will use fold angle alpha = %.2f degrees",
+                len(solutions),
+                solutions[index]["angle"] * 180 / pi,
             )
+
+        # For balancing the two sides: it is better to rotate both: -angle/2 and angle/2
+        # The the rotationa axis for the orbit shape will be the z-axis
+        half_angle = solutions[index]["angle"] / 2
+
+        # Add translated origin and make the fold incl. the origin
+        side_vs_t.append([-make_origin])
+        side_vs_t0 = fold_side(-half_angle)
+        side_vs_t1 = fold_side(half_angle)
+
+        # remove origin:
+        new_origin = -(side_vs_t0[-1][0] + side_vs_t1[-1][0]) / 2
+        side_vs_t0 = side_vs_t0[:-1]
+        side_vs_t1 = side_vs_t1[:-1]
+
+        # translate back
+        both_sides = translate_list_of_vs(side_vs_t0, new_origin)
+        next_side_i = len(both_sides)
+        both_sides.extend(translate_list_of_vs(side_vs_t1, new_origin))
+
+        # add one edge, that needs to attached to {n/p}
+        both_sides.append([both_sides[0][2], both_sides[next_side_i][2]])
+
+        #######
+        #  2  #
+        #######
+        # Attach to the top {n/p}
+        top_vs = get_polygon(n, p)
+        both_sides = self._attach_edges(both_sides, [0, 1], top_vs[0][:2], sub_index=-1)
+
+        # remove that edge again
+        del both_sides[-1]
+
+        # Now fold around that edge to form more triangles.
+        # TODO: fold so that the distance from both_sides[0][3] to top_vs[0][-1] is 2
+        LOGGER.info(
+            "Fitting half-hip roof to top {%d/%d} polygon", self._cupola_data.p, self._cupola_data.n
+        )
+        axis_direction = top_vs[0][0] - top_vs[0][1]
+        axis_through = top_vs[0][0]
+        fold_vertex = both_sides[0][3]
+        def fold_result(alpha):
+            transform = geomtypes.Rot3NonCentered(axis_direction, axis_through, alpha)
+            new_vec = transform * fold_vertex
+            return abs(2 - (top_vs[0][-1] - new_vec).norm())
+
+        solutions = []
+        no_of_steps = 20
+        for step in range(no_of_steps):
+            alpha = -pi + step * TWO_PI / no_of_steps
+
+            result = minimize(fold_result, alpha, method="Powell")
+            if result.success:
+                fold_angle = result.x[0]
+                fold_angle = (fold_angle + pi) % TWO_PI - pi
+                with geomtypes.FloatHandler(4):
+                    if geomtypes.FloatHandler.eq(fold_angle, 0):
+                        continue
+                    if geomtypes.FloatHandler.eq(fold_angle, pi):
+                        continue
+                    if geomtypes.FloatHandler.eq(fold_angle, -pi):
+                        continue
+                already_found = False
+                for solution in solutions:
+                    with geomtypes.FloatHandler(self.exp_tol_eq_float):
+                        if geomtypes.FloatHandler.eq(fold_angle, solution):
+                            already_found = True
+                            break
+                if not already_found:
+                    solutions.append(fold_angle)
+
+        LOGGER.info("Found %d solutions:", len(solutions))
+        for angle in solutions:
+            LOGGER.info("  - %0.2f:", angle)
+        # TODO: check length
+        using = self._cupola_data.use_index if self._cupola_data.use_index < len(solutions) else 0
+        angle = solutions[using]
+        LOGGER.info("Will use %0.2f (index %d)", angle, using)
+        transform = geomtypes.Rot3NonCentered(axis_direction, axis_through, angle)
+
+        both_sides = [
+            [
+                transform * v for v in face
+            ] for face in both_sides
+        ]
+        # TODO: remove one side
+        # TODO: rotate around Z-axis n times with angle 2π/n
+
+        #######
+        #  3  #
+        #######
+        # Put these together
+        add_face_list(top_vs, self.base_col)
+        add_face_list(both_sides, self.side_polygon_col)
+        add_face(
+            [both_sides[0][1], both_sides[0][2], both_sides[next_side_i][2]],
+            self.triangle_col,
+        )
+        add_face(
+            [both_sides[0][0], both_sides[next_side_i][-1], both_sides[0][-1]],
+            self.triangle_col,
+        )
 
         super().__init__(
             vertices,
@@ -321,28 +457,23 @@ class Cupola(geom_3d.SimpleShape):
         return (new_top - other_top).norm()
 
     # TODO: perhaps this method can be static
-    # A more general method would make sure that the distance to vertex gets a certain value, but
-    # then minimize must be used (and there will be more than one solution)
-    def _attach_side(self, side_vs, side_edge, attach_to, side_vertex, vertex, sub_index=0):
-        """Attach an edge of side_vs to a specified edge and fold into correct position.
+    # TODO: this method should return a 4D matrix, then you don't need to
+    def _attach_edges(self, faces, edge, attach_to, sub_index=0):
+        """Attach an edge of faces to a specified edge
 
-        side_vs: the vertices of the polygon to attach. This is a list of list to support {9/3} e.g.
-        side_edge: two indices in side_vs[sub_index] specifying an edge to attach
-        attach_to: a list for two coordinates, where side_edge[0] shall be attached to the first
-            coordinate in the list and side_edge[1] to the other one.
-        side_vertex: an index in side_vs[sub_index] different from the ones in side_edge. The face
-            side_vs will be folded over side_edge so that side_vertex will have a certain distance
-            to vertex
-        vertex: a coordinate to which side_vertex needs to be attaced
-        sub_index: the list of vertices in side_vs to use when attaching
+        faces: the vertices of the polygon to attach. This is a list of list to support {9/3} e.g.
+        edge: two indices in faces[sub_index] specifying an edge to attach
+        attach_to: a list for two coordinates, where vertex index edge[0] shall be attached to the
+            first coordinate in the list and edge[1] to the other one.
+        sub_index: the list of vertices in faces to use when attaching
 
-        return: a new array of side_vs for the transformed face
+        return: a new array of faces for the transformed face
         """
-        side_sub = side_vs[sub_index]
-        i_v0 = side_edge[0]
-        i_v1 = side_edge[1]
-        translate = attach_to[0] - side_sub[i_v0]
-        vs = [[translate + v for v in v_list] for v_list in side_vs]
+        # Move this first part out: attach edge to edge
+        side_sub = faces[sub_index]
+        i_v0 = edge[0]
+        i_v1 = edge[1]
+        vs = translate_list_of_vs(faces, attach_to[0] - side_sub[i_v0])
         # Rotate to get v1 attached to attach_to[1]
         side_sub = vs[sub_index]
         vec0 = side_sub[i_v1] - side_sub[i_v0]
@@ -353,11 +484,34 @@ class Cupola(geom_3d.SimpleShape):
         axis = vec0.cross(vec1)
         rotate = geomtypes.Rot3(axis=axis, angle=angle)
         make_origin = side_sub[i_v0]
-        vs = [[v - make_origin for v in v_list] for v_list in vs]
+        vs = translate_list_of_vs(vs, -make_origin)
         vs = [[rotate * v for v in v_list] for v_list in vs]
-        vs = [[v + make_origin for v in v_list] for v_list in vs]
-        # Now rotate around side_edge to attach side_vertex to vertex
+        vs = translate_list_of_vs(vs, make_origin)
+        return vs
 
+    def fold_until(
+        self,
+        vs,
+        axis: geomtypes.Vec3,
+        axis_through: geomtypes.Vec3,
+        init_angle,
+        to_minimize,
+    ):
+        """Fold vertices around an axis to minimize a certain value.
+
+        vs: an array with 3D vertices, must be of Vec3 type
+        axis: a direction vector.
+        axis_through: a point on the axis
+        init_angle: start with this fold angle, which should be close to the solution
+        to_minimize: a function that accepts the folded vs and returns a values. It is assumed
+            that for the fold angle that is being looked for the returned values is the lowest.
+
+        Return: a 4D matrix that expresses the transform using homogeneous coordinates.
+        """
+
+    def fold_to_attach_vertices(self, vs, sub_index, side_vertex, vertex):
+        """Old code to fold a side along a (shared) edge until vertices coincide."""
+        # Now rotate around side_edge to attach side_vertex to vertex
         # TODO: break out code and share (the part the translates and rotates)
         side_sub = vs[sub_index]
         edge = geom_3d.Line3D(side_sub[0], p1=side_sub[1])
@@ -465,6 +619,7 @@ if __name__ == "__main__":
         os.mkdir(ARGS.out_dir)
 
     shape = Cupola(ARGS.n, ARGS.m, ARGS.p, not ARGS.allow_holes, angle_index=ARGS.angle_index)
+    shape.transform(geomtypes.Roty(angle=-pi/2))
 
     if ARGS.x_rotate:
         shape.transform(
