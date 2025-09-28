@@ -630,6 +630,11 @@ if __name__ == "__main__":
     shape = Cupola(ARGS.n, ARGS.m, ARGS.p, not ARGS.allow_holes, angle_index=ARGS.angle_index)
     shape.transform(geomtypes.Roty(angle=-pi/2))
 
+    sum_of_vs = geomtypes.Vec3([0, 0, 0])
+    for v in shape.vs:
+        sum_of_vs += v
+    shape.translate(-sum_of_vs / len(shape.vs))
+
     if ARGS.x_rotate:
         shape.transform(
             geomtypes.Rot3(
