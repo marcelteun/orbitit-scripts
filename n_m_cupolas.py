@@ -369,12 +369,16 @@ class Cupola(geom_3d.SimpleShape):
         #  3  #
         #######
         # Put these together
+        for face in top_vs:
+            face.reverse()
         add_face_list(top_vs, self.base_col)
         to_orbit = both_sides[:next_side_i]
         triangles = [
             [both_sides[0][1], both_sides[0][2], both_sides[next_side_i][2]],
             [both_sides[0][0], both_sides[next_side_i][-1], both_sides[0][-1]],
         ]
+        for face in to_orbit:
+            face.reverse()
         angle_step = TWO_PI / self._cupola_data.n
         for i in range(self._cupola_data.n):
             transform = geomtypes.Rot3(axis=geomtypes.Vec3([0, 0, 1]), angle=i * angle_step)
