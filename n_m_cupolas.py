@@ -169,7 +169,7 @@ class Cupola(geom_3d.SimpleShape):
 
     # colour indices from orbitit.colors.STD_COLORS
     base_col = 3
-    triangle_col = 1
+    triangle_col = [1, 6]
     side_polygon_col = 2
 
     edge_length = 2
@@ -364,23 +364,32 @@ class Cupola(geom_3d.SimpleShape):
                 transform * v for v in face
             ] for face in both_sides
         ]
-        # TODO: remove one side
-        # TODO: rotate around Z-axis n times with angle 2π/n
 
         #######
         #  3  #
         #######
         # Put these together
         add_face_list(top_vs, self.base_col)
-        add_face_list(both_sides, self.side_polygon_col)
-        add_face(
+        to_orbit = both_sides[:next_side_i]
+        triangles = [
             [both_sides[0][1], both_sides[0][2], both_sides[next_side_i][2]],
-            self.triangle_col,
-        )
-        add_face(
             [both_sides[0][0], both_sides[next_side_i][-1], both_sides[0][-1]],
-            self.triangle_col,
-        )
+        ]
+        angle_step = TWO_PI / self._cupola_data.n
+        for i in range(self._cupola_data.n):
+            transform = geomtypes.Rot3(axis=geomtypes.Vec3([0, 0, 1]), angle=i * angle_step)
+            add_face_list(
+                [
+                    [transform * v for v in face]
+                    for face in to_orbit
+                ],
+                self.side_polygon_col,
+            )
+            for i, face in enumerate(triangles):
+                add_face(
+                    [transform * v for v in face],
+                    self.triangle_col[i],
+                )
 
         super().__init__(
             vertices,
@@ -629,7 +638,7 @@ if __name__ == "__main__":
             )
         )
 
-    model = f"{ARGS.n}_{ARGS.m}__{ARGS.n}_{ARGS.p}"
+    model = f"{ARGS.n}_{ARGS.m}__{ARGS.n}_{ARGS.p}_{ARGS.angle_index}"
     filepath = Path(ARGS.out_dir) / f"{ARGS.file_base_name}{model}{ARGS.file_tail_name}.off"
     if not ARGS.overwrite and filepath.is_file():
         yes_or_no = input(f"{filepath} exists. Overwrite? y/N\n")
