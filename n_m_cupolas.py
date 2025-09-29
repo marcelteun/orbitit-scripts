@@ -17,10 +17,10 @@ The scipt tries to put together two sides consisting of {m/q} polygons sharing a
 fit a equilateral triangle on each side of the edge. The result is a shape that might look like a
 half-hip roof.
 
-These roofs a for to an {n/p} polygon where a free triangle edge is attached to an edge of the {n/p}
-polygon. The dihedral angle between these faces is adjusted in such a way that the distance between
-the next vertices has the same length as one edge. This would mean that another equilateral triangle
-would fit.
+These roofs are attached to an {n/p} polygon where a free triangle edge is attached to an edge of
+the {n/p} polygon. The dihedral angle between these faces is adjusted in such a way that the
+distance between the next vertices has the same length as one edge. This would mean that another
+equilateral triangle would fit.
 
 The hope is that when the half-hip root is rotated n times that the triangles of the half-hip roof
 coincide with that extra one and that one side of the roof coincide with the other half of a rotated
@@ -28,6 +28,7 @@ one.
 
 Note that not all parameters have solutions.
 """
+# TODO: raise ValueError when n > 11
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s %(levelname)-8s - %(message)s',
