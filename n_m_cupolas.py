@@ -11,22 +11,22 @@ from orbitit.colors import STD_COLORS as cols
 from orbitit import geom_3d, geomtypes
 
 # TODO: update text below
-DESCRIPTION = """Generate an off file for {n/m} based pseudo-cupolaic prismatoids
+DESCRIPTION = """Generate an off file for {n/p} base and {m/q} sides cupolaic shapes.
 
-The result will be a polyhedron with a {n/m}-gram in the bottom and attached to the edges there will
-be triangles. which will be equilateral by default. The polyhedraon will be closed by adding
-crossed rectangles, for which the crossing edges are shared with the triangles and the parallel
-edges are shared with a neighbouring crossed rectangle.
+The scipt tries to put together two sides consisting of {m/q} polygons sharing an edge and it will
+fit a equilateral triangle on each side of the edge. The result is a shape that might look like a
+half-hip roof.
 
-Note all combinations of n and m have solutions.
+These roofs a for to an {n/p} polygon where a free triangle edge is attached to an edge of the {n/p}
+polygon. The dihedral angle between these faces is adjusted in such a way that the distance between
+the next vertices has the same length as one edge. This would mean that another equilateral triangle
+would fit.
 
-In two dimensions there is not difference between for instance a {7/3} and a {7/4}. It is the
-convention for e.g. anti-prisms to use {7/4} if retrograde triangles are added. Here only one option
-is valid, e.g. for {7/3} you can only get retrograde triangles and for {7/2} you can only get normal
-triangles.
+The hope is that when the half-hip root is rotated n times that the triangles of the half-hip roof
+coincide with that extra one and that one side of the roof coincide with the other half of a rotated
+one.
 
-The script will however still expect to follow the convention and return an error if the wrong value
-of 'm' is used.
+Note that not all parameters have solutions.
 """
 logging.basicConfig(
     level=logging.INFO,
