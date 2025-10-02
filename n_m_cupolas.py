@@ -336,6 +336,7 @@ class Cupola(geom_3d.SimpleShape):
         del both_sides[-1]
 
         # Now fold around that edge to form more triangles.
+        # TODO: add these triangles to the resulting shape (and remove the base)
         LOGGER.info(
             "Fitting half-hip roof to top {%d/%d} polygon",
             self._cupola_data.base.n,
@@ -395,7 +396,7 @@ class Cupola(geom_3d.SimpleShape):
             else 0
         )
         angle = solutions[using]
-        LOGGER.info("Will use %0.2f (index %d)", angle, using)
+        LOGGER.info("Will use %0.2f degrees (index %d)", geom_3d.RAD2DEG * angle, using)
         transform = geomtypes.Rot3NonCentered(axis_direction, axis_through, angle)
 
         both_sides = [[transform * v for v in face] for face in both_sides]
@@ -621,12 +622,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "base_m",
         type=int,
-        help="Vertex offset of the base polygon {n/m}. Use m > n/2.",
+        help="Vertex offset of the base {n/m}-polygon. Use m > n/2.",
     )
     parser.add_argument(
-        "side_p",
+        "side_n",
         type=int,
-        help="Vertex offset of the side polygon {n/p}. Use m > n/2.",
+        help="Number of vertices of the side {n/m}-polygon.",
+    )
+    parser.add_argument(
+        "side_m",
+        type=int,
+        help="Vertex offset of the side {n/m}-polygon. Use m > n/2.",
     )
     parser.add_argument(
         "-i",
@@ -697,7 +703,7 @@ if __name__ == "__main__":
 
     shape = Cupola(
         Polygram(ARGS.base_n, ARGS.base_m),
-        Polygram(ARGS.base_n, ARGS.side_p),
+        Polygram(ARGS.side_n, ARGS.side_m),
         not ARGS.allow_holes,
         angle_index=ARGS.angle_index,
         use_whole_roof=ARGS.use_whole_roof,
@@ -718,7 +724,7 @@ if __name__ == "__main__":
         )
 
     model = (
-        f"{ARGS.base_n}_{ARGS.base_m}__{ARGS.base_n}_{ARGS.side_p}_{ARGS.angle_index}"
+        f"{ARGS.base_n}_{ARGS.base_m}__{ARGS.side_n}_{ARGS.side_m}_{ARGS.angle_index}"
     )
     filepath = (
         Path(ARGS.out_dir) / f"{ARGS.file_base_name}{model}{ARGS.file_tail_name}.off"
