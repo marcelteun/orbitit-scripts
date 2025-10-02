@@ -1,4 +1,5 @@
 """Script to generate a cupalaic prismatoid based on a {n/m}-gram"""
+
 import argparse
 import logging
 from math import acos, cos, gcd, pi, sin, sqrt
@@ -31,12 +32,11 @@ Note that not all parameters have solutions.
 # TODO: raise ValueError when n > 11
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s %(levelname)-8s - %(message)s',
-    datefmt='%m-%d %H:%M',
+    format="%(asctime)s %(levelname)-8s - %(message)s",
+    datefmt="%m-%d %H:%M",
 )
 LOGGER = logging.getLogger("pseudo copulaic prismatoid generator")
 TWO_PI = 2 * pi
-
 
 
 def get_polygon(n, m, edge_length=2, rotate=True):
@@ -83,9 +83,11 @@ def get_polygon(n, m, edge_length=2, rotate=True):
     scale = edge_length / diagonal
     return [[scale * v for v in v_list] for v_list in vs]
 
+
 def translate_list_of_vs(list_of_vs, vector):
     """Translate a list of list of Vec3 points."""
     return [[v + vector for v in vs] for vs in list_of_vs]
+
 
 def fold_to_fit(
     fold_func,
@@ -160,9 +162,18 @@ def fold_to_fit(
 class Object:
     """Just a class to be able to add attributes to an object."""
 
+
+class Polygram:
+    """A polygram specification {n/m}."""
+
+    def __init__(self, n, m):
+        "An {n/m} polygram."
+        self.n = n
+        self.m = m
+
+
 class Cupola(geom_3d.SimpleShape):
-    """class for creating cupola object.
-    """
+    """class for creating cupola object."""
 
     # When taking the outline of a concave polygon, use this exponent to decide whether two floats
     # are equal
@@ -175,13 +186,20 @@ class Cupola(geom_3d.SimpleShape):
 
     edge_length = 2
 
-    def __init__(self, n, m, p, use_outlines, angle_index=0, use_whole_roof=False):
+    def __init__(
+        self,
+        base: Polygram,
+        side: Polygram,
+        use_outlines,
+        angle_index=0,
+        use_whole_roof=False,
+    ):
         """Initialise object
 
         This will create a cupola prismatoid with bases {n/m} sides {n/p}.
 
-        n: amount of vertices in the base and the sides
-        m: the number m in the base {n/m} with m < n/2.
+        base: the {n/m} polygram used at the base.
+        side: the {n/m} polygram used at the sides.
         p: the number p in {n/p} used for the sides
         use_outlines: if set to True then the {n/m}-gram(s) will be replaced by a polygon following
             the outline. If set to False the polygon will follow the n edges, which might not be
@@ -190,14 +208,15 @@ class Cupola(geom_3d.SimpleShape):
         use_whole_roof: If True then the {n/p} polygon that use to construct a half-hip roof is kept
             in the final shape. Otherwise only one side of the roof is kept.
         """
-        if n < 3:
+        if base.n < 3:
+            raise ValueError("n must be bigger than 3")
+        if side.n < 3:
             raise ValueError("n must be bigger than 3")
 
         # any data for this pseudo cupolaic prismatoid
         self._cupola_data = Object()
-        self._cupola_data.n = n
-        self._cupola_data.m = m
-        self._cupola_data.p = p
+        self._cupola_data.base = base
+        self._cupola_data.side = side
         self._cupola_data.base_at_z = 0
         self._cupola_data.use_index = angle_index
         self._cupola_data.use_outlines = use_outlines
@@ -232,7 +251,7 @@ class Cupola(geom_3d.SimpleShape):
         #  1  #
         #######
         # Try to make a "half-hip roof" of two sides, using an equilateral triangle as hip.
-        side_vs = get_polygon(n, m)
+        side_vs = get_polygon(self._cupola_data.side.n, self._cupola_data.side.m)
         side_sub = side_vs[0]
         len_sub = len(side_sub)
         assert len_sub > 2, "Digons not supported here"
@@ -264,8 +283,8 @@ class Cupola(geom_3d.SimpleShape):
 
         LOGGER.info(
             "Looking for fold angle to create half-hip roof of {%d/%d} (and triangle)",
-            self._cupola_data.n,
-            self._cupola_data.m,
+            self._cupola_data.side.n,
+            self._cupola_data.side.m,
         )
         solutions = fold_to_fit(
             fold_side,
@@ -309,21 +328,23 @@ class Cupola(geom_3d.SimpleShape):
         #######
         #  2  #
         #######
-        # Attach to the top {n/p}
-        top_vs = get_polygon(n, p)
+        # Attach to the base {n/m}
+        top_vs = get_polygon(self._cupola_data.base.n, self._cupola_data.base.m)
         both_sides = self._attach_edges(both_sides, [0, 1], top_vs[0][:2], sub_index=-1)
 
         # remove that edge again
         del both_sides[-1]
 
         # Now fold around that edge to form more triangles.
-        # TODO: fold so that the distance from both_sides[0][3] to top_vs[0][-1] is 2
         LOGGER.info(
-            "Fitting half-hip roof to top {%d/%d} polygon", self._cupola_data.n, self._cupola_data.p
+            "Fitting half-hip roof to top {%d/%d} polygon",
+            self._cupola_data.base.n,
+            self._cupola_data.base.m,
         )
         axis_direction = top_vs[0][0] - top_vs[0][1]
         axis_through = top_vs[0][0]
         fold_vertex = both_sides[0][3]
+
         def fold_result(alpha):
             transform = geomtypes.Rot3NonCentered(axis_direction, axis_through, alpha)
             new_vec = transform * fold_vertex
@@ -357,10 +378,10 @@ class Cupola(geom_3d.SimpleShape):
         if not len(solutions):
             LOGGER.error(
                 "No solutions found to fit {%d/%d} roofs to {%d/%d}",
-                self._cupola_data.n,
-                self._cupola_data.m,
-                self._cupola_data.n,
-                self._cupola_data.p,
+                self._cupola_data.side.n,
+                self._cupola_data.side.m,
+                self._cupola_data.base.n,
+                self._cupola_data.base.m,
             )
             raise ValueError("Try with other parameters")
 
@@ -368,16 +389,16 @@ class Cupola(geom_3d.SimpleShape):
         for angle in solutions:
             LOGGER.info("  %0.2f degrees", geom_3d.RAD2DEG * angle)
         # TODO: check length
-        using = self._cupola_data.use_index if self._cupola_data.use_index < len(solutions) else 0
+        using = (
+            self._cupola_data.use_index
+            if self._cupola_data.use_index < len(solutions)
+            else 0
+        )
         angle = solutions[using]
         LOGGER.info("Will use %0.2f (index %d)", angle, using)
         transform = geomtypes.Rot3NonCentered(axis_direction, axis_through, angle)
 
-        both_sides = [
-            [
-                transform * v for v in face
-            ] for face in both_sides
-        ]
+        both_sides = [[transform * v for v in face] for face in both_sides]
 
         #######
         #  3  #
@@ -394,22 +415,24 @@ class Cupola(geom_3d.SimpleShape):
             [both_sides[0][1], both_sides[0][2], both_sides[next_side_i][2]],
             [both_sides[0][0], both_sides[next_side_i][-1], both_sides[0][-1]],
         ]
-        #for face in to_orbit:
+        # for face in to_orbit:
         #    face.reverse()
-        angle_step = TWO_PI / self._cupola_data.n
+        angle_step = TWO_PI / self._cupola_data.base.n
         # Note: it is less efficient to have separate loops here, but then the faces are sorted
-        for i in range(self._cupola_data.n):
-            transform = geomtypes.Rot3(axis=geomtypes.Vec3([0, 0, 1]), angle=i * angle_step)
+        for i in range(self._cupola_data.base.n):
+            transform = geomtypes.Rot3(
+                axis=geomtypes.Vec3([0, 0, 1]), angle=i * angle_step
+            )
             add_face_list(
-                [
-                    [transform * v for v in face]
-                    for face in to_orbit
-                ],
+                [[transform * v for v in face] for face in to_orbit],
                 self.side_polygon_col,
             )
-        for j in range(2):
-            for i in range(self._cupola_data.n):
-                transform = geomtypes.Rot3(axis=geomtypes.Vec3([0, 0, 1]), angle=i * angle_step)
+        no_of_triangles = 2
+        for j in range(no_of_triangles):
+            for i in range(self._cupola_data.base.n):
+                transform = geomtypes.Rot3(
+                    axis=geomtypes.Vec3([0, 0, 1]), angle=i * angle_step
+                )
                 add_face(
                     [transform * v for v in triangles[j]],
                     self.triangle_col[j],
@@ -419,7 +442,10 @@ class Cupola(geom_3d.SimpleShape):
             vertices,
             faces,
             colors=(cols, col_i),
-            name=f"Cupola {n}/{m} with {n}/{p}",
+            name=(
+                f"Cupola {self._cupola_data.base.n}/{self._cupola_data.base.n} with "
+                f"{self._cupola_data.side.n}/{self._cupola_data.side.n}"
+            ),
         )
 
     def _get_triangle(self, base_vs, delta):
@@ -452,7 +478,9 @@ class Cupola(geom_3d.SimpleShape):
                 for s in solutions:
                     LOGGER.info("  %.2f degrees", s["angle"] * 180 / pi)
             solution = solutions[
-                self._cupola_data.use_index if self._cupola_data.use_index < len(solutions) else 0
+                self._cupola_data.use_index
+                if self._cupola_data.use_index < len(solutions)
+                else 0
             ]
             LOGGER.info("Using fold angle %.2f degrees", solution["angle"] * 180 / pi)
             return solution["vs"]
@@ -584,68 +612,78 @@ class Cupola(geom_3d.SimpleShape):
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(description=DESCRIPTION)
-    parser.add_argument("n", type=int, help="Number of vertices of the {n/m}-polygon.")
     parser.add_argument(
-        "m",
+        "base_n",
         type=int,
-        help="Vertex offset of the primary base polygon {n/m}. Use m > n/2."
+        help="Number of vertices of the base {n/m}-polygon.",
     )
     parser.add_argument(
-        "p",
+        "base_m",
         type=int,
-        help="Vertex offset of the secondary base polygon {n/p}. Use m > n/2."
+        help="Vertex offset of the base polygon {n/m}. Use m > n/2.",
     )
     parser.add_argument(
-        "-i", "--angle_index",
+        "side_p",
+        type=int,
+        help="Vertex offset of the side polygon {n/p}. Use m > n/2.",
+    )
+    parser.add_argument(
+        "-i",
+        "--angle_index",
         type=int,
         default=0,
-        help="If more than one triangle angle is found, use the specified index."
+        help="If more than one triangle angle is found, use the specified index.",
     )
     parser.add_argument(
-        "-b", "--file_base_name",
+        "-b",
+        "--file_base_name",
         default="cupola_",
         help="A header to name of the file. This will be used as a base for the OFF file. "
-        "It will be appended by n_m__n_p.off."
+        "It will be appended by n_m__n_p.off.",
     )
     parser.add_argument(
-        "-t", "--file_tail_name",
+        "-t",
+        "--file_tail_name",
         default="",
-        help="A string to append to name of the file. This will be appended to 'n_m__n_p'."
+        help="A string to append to name of the file. This will be appended to 'n_m__n_p'.",
     )
     parser.add_argument(
-        "-o", "--out_dir",
+        "-o",
+        "--out_dir",
         default=".",
-        help="path to directory to save the resulting OFF file(s)."
+        help="path to directory to save the resulting OFF file(s).",
     )
     parser.add_argument(
-        "-H", "--allow_holes",
+        "-H",
+        "--allow_holes",
         action="store_true",
-        help="If specified the {n/m} polygon will saved using n vertices, which results in holes "
-        "in orbitit for the parts that have even coverage due to the stencil buffer. "
-        "If not specified the n/q polygons and the crossed rectangles will be replaced by their "
+        help="If specified a {n/m} polygon will saved using n vertices and edges, which results "
+        "in holes in orbitit for the parts that have even coverage due to the stencil buffer. "
+        "If not specified the {n/m} polygons and the crossed rectangles will be replaced by their "
         "outline, which results in OFF files where edges are broken and hence the will not have "
         "an even amount of faces joining in each edge, which might result in warnings or errors "
         "for some 3D programs.",
     )
     parser.add_argument(
-        "-w", "--overwrite",
+        "-w",
+        "--overwrite",
         action="store_true",
         help="If specified an existing file will be overwritten without asking. Otherwise the "
-        "the script will ask interactively whether to overwrite an existing file."
+        "the script will ask interactively whether to overwrite an existing file.",
     )
     parser.add_argument(
         "--use_whole_roof",
         action="store_true",
         help="If specified the {n/p} polygon that use to construct a half-hip roof is kept in the "
-        "final shape. Otherwise only one side of the roof is kept."
+        "final shape. Otherwise only one side of the roof is kept.",
     )
     parser.add_argument(
-        "-x", "--x-rotate",
+        "-x",
+        "--x-rotate",
         metavar="DEG",
         type=float,
-        help="Rotate the model a certain amount of degrees around the x-axis."
+        help="Rotate the model a certain amount of degrees around the x-axis.",
     )
     ARGS = parser.parse_args()
 
@@ -658,14 +696,13 @@ if __name__ == "__main__":
         os.mkdir(ARGS.out_dir)
 
     shape = Cupola(
-        ARGS.n,
-        ARGS.m,
-        ARGS.p,
+        Polygram(ARGS.base_n, ARGS.base_m),
+        Polygram(ARGS.base_n, ARGS.side_p),
         not ARGS.allow_holes,
         angle_index=ARGS.angle_index,
         use_whole_roof=ARGS.use_whole_roof,
     )
-    shape.transform(geomtypes.Roty(angle=-pi/2))
+    shape.transform(geomtypes.Roty(angle=-pi / 2))
 
     sum_of_vs = geomtypes.Vec3([0, 0, 0])
     for v in shape.vs:
@@ -680,8 +717,12 @@ if __name__ == "__main__":
             )
         )
 
-    model = f"{ARGS.n}_{ARGS.m}__{ARGS.n}_{ARGS.p}_{ARGS.angle_index}"
-    filepath = Path(ARGS.out_dir) / f"{ARGS.file_base_name}{model}{ARGS.file_tail_name}.off"
+    model = (
+        f"{ARGS.base_n}_{ARGS.base_m}__{ARGS.base_n}_{ARGS.side_p}_{ARGS.angle_index}"
+    )
+    filepath = (
+        Path(ARGS.out_dir) / f"{ARGS.file_base_name}{model}{ARGS.file_tail_name}.off"
+    )
     if not ARGS.overwrite and filepath.is_file():
         yes_or_no = input(f"{filepath} exists. Overwrite? y/N\n")
         if not yes_or_no or yes_or_no.lower()[0] != "y":
