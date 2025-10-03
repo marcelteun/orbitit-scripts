@@ -181,7 +181,7 @@ class Cupola(geom_3d.SimpleShape):
 
     # colour indices from orbitit.colors.STD_COLORS
     base_col = 3
-    triangle_col = [1, 6]
+    triangle_col = [1, 6, 7]
     side_polygon_col = 2
 
     edge_length = 2
@@ -336,7 +336,6 @@ class Cupola(geom_3d.SimpleShape):
         del both_sides[-1]
 
         # Now fold around that edge to form more triangles.
-        # TODO: add these triangles to the resulting shape (and remove the base)
         LOGGER.info(
             "Fitting half-hip roof to top {%d/%d} polygon",
             self._cupola_data.base.n,
@@ -402,6 +401,11 @@ class Cupola(geom_3d.SimpleShape):
         transform = geomtypes.Rot3NonCentered(axis_direction, axis_through, angle)
 
         both_sides = [[transform * v for v in face] for face in both_sides]
+        extra_triangle = [
+            both_sides[0][3],
+            top_vs[0][0],
+            top_vs[0][-1],
+        ]
 
         #######
         #  3  #
@@ -417,6 +421,7 @@ class Cupola(geom_3d.SimpleShape):
         triangles = [
             [both_sides[0][1], both_sides[0][2], both_sides[next_side_i][2]],
             [both_sides[0][0], both_sides[next_side_i][-1], both_sides[0][-1]],
+            extra_triangle,
         ]
         # for face in to_orbit:
         #    face.reverse()
@@ -430,7 +435,7 @@ class Cupola(geom_3d.SimpleShape):
                 [[transform * v for v in face] for face in to_orbit],
                 self.side_polygon_col,
             )
-        no_of_triangles = 2
+        no_of_triangles = 3
         for j in range(no_of_triangles):
             for i in range(self._cupola_data.base.n):
                 transform = geomtypes.Rot3(
