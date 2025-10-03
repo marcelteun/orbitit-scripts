@@ -358,6 +358,8 @@ class Cupola(geom_3d.SimpleShape):
 
             result = minimize(fold_result, alpha, method="Powell")
             if result.success:
+                if geomtypes.FloatHandler.ne(result.fun, 0):
+                    continue
                 fold_angle = result.x[0]
                 fold_angle = (fold_angle + pi) % TWO_PI - pi
                 with geomtypes.FloatHandler(4):
