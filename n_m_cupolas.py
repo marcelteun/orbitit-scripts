@@ -191,8 +191,7 @@ class Cupola(geom_3d.SimpleShape):
         base: Polygram,
         side: Polygram,
         use_outlines,
-        angle_index=0,
-        use_whole_roof=False,
+        args,
     ):
         """Initialise object
 
@@ -200,13 +199,17 @@ class Cupola(geom_3d.SimpleShape):
 
         base: the {n/m} polygram used at the base.
         side: the {n/m} polygram used at the sides.
-        p: the number p in {n/p} used for the sides
         use_outlines: if set to True then the {n/m}-gram(s) will be replaced by a polygon following
             the outline. If set to False the polygon will follow the n edges, which might not be
             shown well in a 3D player, e.g. holes might appear at parts that have even coverage.
-        angle_index: If more than one triangle angle is found, use the specified index.
-        use_whole_roof: If True then the {n/p} polygon that use to construct a half-hip roof is kept
-            in the final shape. Otherwise only one side of the roof is kept.
+        args: a Namespace object with the following fields:
+            angle_index: If more than one triangle angle is found, use the specified index.
+            use_whole_roof: If True then the {n/p} polygon that use to construct a half-hip roof
+                is kept in the final shape. Otherwise only one side of the roof is kept.
+            add_extra_triangles: If True then the extra equilateral triangles are added. These extra
+                triangles are from attaching the roofs to the base polygon.
+            no_base: if set then the base isn't added, which can make sense when add_extra_triangles
+                is set.
         """
         if base.n < 3:
             raise ValueError("n must be bigger than 3")
@@ -218,9 +221,11 @@ class Cupola(geom_3d.SimpleShape):
         self._cupola_data.base = base
         self._cupola_data.side = side
         self._cupola_data.base_at_z = 0
-        self._cupola_data.use_index = angle_index
         self._cupola_data.use_outlines = use_outlines
-        self._cupola_data.use_whole_roof = use_whole_roof
+        self._cupola_data.use_index = args.angle_index
+        self._cupola_data.use_whole_roof = args.use_whole_roof
+        self._cupola_data.add_extra_triangles = args.add_extra_triangles
+        self._cupola_data.add_base = not args.no_base
 
         if use_outlines:
             LOGGER.info("Using outlines, OFF files will not load in Stella!")
@@ -411,9 +416,10 @@ class Cupola(geom_3d.SimpleShape):
         #  3  #
         #######
         # Put these together
-        for face in top_vs:
-            face.reverse()
-        add_face_list(top_vs, self.base_col)
+        if self._cupola_data.add_base:
+            for face in top_vs:
+                face.reverse()
+            add_face_list(top_vs, self.base_col)
         if self._cupola_data.use_whole_roof:
             to_orbit = both_sides
         else:
@@ -435,7 +441,7 @@ class Cupola(geom_3d.SimpleShape):
                 [[transform * v for v in face] for face in to_orbit],
                 self.side_polygon_col,
             )
-        no_of_triangles = 3
+        no_of_triangles = 3 if self._cupola_data.add_extra_triangles else 2
         for j in range(no_of_triangles):
             for i in range(self._cupola_data.base.n):
                 transform = geomtypes.Rot3(
@@ -688,8 +694,27 @@ if __name__ == "__main__":
     parser.add_argument(
         "--use_whole_roof",
         action="store_true",
-        help="If specified the {n/p} polygon that use to construct a half-hip roof is kept in the "
-        "final shape. Otherwise only one side of the roof is kept.",
+        help="If specified the {n/p} polygon that was used to construct a half-hip roof is kept in "
+        "the final shape. Otherwise only one side of the roof is kept.",
+    )
+    parser.add_argument(
+        "--add_extra_triangles",
+        action="store_true",
+        help="When attaching the sides to the base, the program will try to used a dihedral angle "
+        "between the triangle of the roof and the base so that the 'next' vertex of the side "
+        "polygon is an edge away from the next vertex in of the base. The next vertex of the side "
+        "polygon is seen from the top of the roof. This means that equilateral triangles are "
+        "formed by the side and base edges to the 'next' vertex and an edge between these 'next' "
+        "vertices. If you set this option these triangles are added to the shape. Note that that "
+        "means that each edge of the base will join three faces: the triangles from the roof, the "
+        "the base and the extra triangles. Therefore it makes sense to remove the base in this "
+        "case.",
+    )
+    parser.add_argument(
+        "--no_base",
+        action="store_true",
+        help="If specified the {n/p} polygon that is the base will not be added to the final "
+        "shape. This is useful when --add_extra_triangles is set.",
     )
     parser.add_argument(
         "-x",
@@ -712,8 +737,7 @@ if __name__ == "__main__":
         Polygram(ARGS.base_n, ARGS.base_m),
         Polygram(ARGS.side_n, ARGS.side_m),
         not ARGS.allow_holes,
-        angle_index=ARGS.angle_index,
-        use_whole_roof=ARGS.use_whole_roof,
+        ARGS,
     )
     shape.transform(geomtypes.Roty(angle=-pi / 2))
 
