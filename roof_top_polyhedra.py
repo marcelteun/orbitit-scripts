@@ -181,7 +181,7 @@ class RoofTop(geom_3d.SimpleShape):
 
     # colour indices from orbitit.colors.STD_COLORS
     base_col = 3
-    triangle_col = [1, 6, 7]
+    triangle_col = [1, 1, 7]
     side_polygon_col = 2
 
     edge_length = 2
