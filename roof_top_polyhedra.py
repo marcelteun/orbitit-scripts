@@ -172,8 +172,8 @@ class Polygram:
         self.m = m
 
 
-class Cupola(geom_3d.SimpleShape):
-    """class for creating cupola object."""
+class RoofTop(geom_3d.SimpleShape):
+    """class for creating cupolaic objects with roof top shaped sides."""
 
     # When taking the outline of a concave polygon, use this exponent to decide whether two floats
     # are equal
@@ -195,7 +195,7 @@ class Cupola(geom_3d.SimpleShape):
     ):
         """Initialise object
 
-        This will create a cupola prismatoid with bases {n/m} sides {n/p}.
+        This will create a cupolaic prismatoid with bases {n/m} sides {n/p}.
 
         base: the {n/m} polygram used at the base.
         side: the {n/m} polygram used at the sides.
@@ -216,16 +216,16 @@ class Cupola(geom_3d.SimpleShape):
         if side.n < 3:
             raise ValueError("n must be bigger than 3")
 
-        # any data for this pseudo cupolaic prismatoid
-        self._cupola_data = Object()
-        self._cupola_data.base = base
-        self._cupola_data.side = side
-        self._cupola_data.base_at_z = 0
-        self._cupola_data.use_outlines = use_outlines
-        self._cupola_data.use_index = args.angle_index
-        self._cupola_data.use_whole_roof = args.use_whole_roof
-        self._cupola_data.add_extra_triangles = args.add_extra_triangles
-        self._cupola_data.add_base = not args.no_base
+        # any data for this shape
+        self._shape_data = Object()
+        self._shape_data.base = base
+        self._shape_data.side = side
+        self._shape_data.base_at_z = 0
+        self._shape_data.use_outlines = use_outlines
+        self._shape_data.use_index = args.angle_index
+        self._shape_data.use_whole_roof = args.use_whole_roof
+        self._shape_data.add_extra_triangles = args.add_extra_triangles
+        self._shape_data.add_base = not args.no_base
 
         if use_outlines:
             LOGGER.info("Using outlines, OFF files will not load in Stella!")
@@ -256,7 +256,7 @@ class Cupola(geom_3d.SimpleShape):
         #  1  #
         #######
         # Try to make a "half-hip roof" of two sides, using an equilateral triangle as hip.
-        side_vs = get_polygon(self._cupola_data.side.n, self._cupola_data.side.m)
+        side_vs = get_polygon(self._shape_data.side.n, self._shape_data.side.m)
         side_sub = side_vs[0]
         len_sub = len(side_sub)
         assert len_sub > 2, "Digons not supported here"
@@ -288,8 +288,8 @@ class Cupola(geom_3d.SimpleShape):
 
         LOGGER.info(
             "Looking for fold angle to create half-hip roof of {%d/%d} (and triangle)",
-            self._cupola_data.side.n,
-            self._cupola_data.side.m,
+            self._shape_data.side.n,
+            self._shape_data.side.m,
         )
         solutions = fold_to_fit(
             fold_side,
@@ -334,7 +334,7 @@ class Cupola(geom_3d.SimpleShape):
         #  2  #
         #######
         # Attach to the base {n/m}
-        top_vs = get_polygon(self._cupola_data.base.n, self._cupola_data.base.m)
+        top_vs = get_polygon(self._shape_data.base.n, self._shape_data.base.m)
         both_sides = self._attach_edges(both_sides, [0, 1], top_vs[0][:2], sub_index=-1)
 
         # remove that edge again
@@ -343,8 +343,8 @@ class Cupola(geom_3d.SimpleShape):
         # Now fold around that edge to form more triangles.
         LOGGER.info(
             "Fitting half-hip roof to top {%d/%d} polygon",
-            self._cupola_data.base.n,
-            self._cupola_data.base.m,
+            self._shape_data.base.n,
+            self._shape_data.base.m,
         )
         axis_direction = top_vs[0][0] - top_vs[0][1]
         axis_through = top_vs[0][0]
@@ -385,10 +385,10 @@ class Cupola(geom_3d.SimpleShape):
         if not len(solutions):
             LOGGER.error(
                 "No solutions found to fit {%d/%d} roofs to {%d/%d}",
-                self._cupola_data.side.n,
-                self._cupola_data.side.m,
-                self._cupola_data.base.n,
-                self._cupola_data.base.m,
+                self._shape_data.side.n,
+                self._shape_data.side.m,
+                self._shape_data.base.n,
+                self._shape_data.base.m,
             )
             raise ValueError("Try with other parameters")
 
@@ -397,8 +397,8 @@ class Cupola(geom_3d.SimpleShape):
             LOGGER.info("  %0.2f degrees", geom_3d.RAD2DEG * angle)
         # TODO: check length
         using = (
-            self._cupola_data.use_index
-            if self._cupola_data.use_index < len(solutions)
+            self._shape_data.use_index
+            if self._shape_data.use_index < len(solutions)
             else 0
         )
         angle = solutions[using]
@@ -416,11 +416,11 @@ class Cupola(geom_3d.SimpleShape):
         #  3  #
         #######
         # Put these together
-        if self._cupola_data.add_base:
+        if self._shape_data.add_base:
             for face in top_vs:
                 face.reverse()
             add_face_list(top_vs, self.base_col)
-        if self._cupola_data.use_whole_roof:
+        if self._shape_data.use_whole_roof:
             to_orbit = both_sides
         else:
             to_orbit = both_sides[next_side_i:]
@@ -431,9 +431,9 @@ class Cupola(geom_3d.SimpleShape):
         ]
         # for face in to_orbit:
         #    face.reverse()
-        angle_step = TWO_PI / self._cupola_data.base.n
+        angle_step = TWO_PI / self._shape_data.base.n
         # Note: it is less efficient to have separate loops here, but then the faces are sorted
-        for i in range(self._cupola_data.base.n):
+        for i in range(self._shape_data.base.n):
             transform = geomtypes.Rot3(
                 axis=geomtypes.Vec3([0, 0, 1]), angle=i * angle_step
             )
@@ -441,9 +441,9 @@ class Cupola(geom_3d.SimpleShape):
                 [[transform * v for v in face] for face in to_orbit],
                 self.side_polygon_col,
             )
-        no_of_triangles = 3 if self._cupola_data.add_extra_triangles else 2
+        no_of_triangles = 3 if self._shape_data.add_extra_triangles else 2
         for j in range(no_of_triangles):
-            for i in range(self._cupola_data.base.n):
+            for i in range(self._shape_data.base.n):
                 transform = geomtypes.Rot3(
                     axis=geomtypes.Vec3([0, 0, 1]), angle=i * angle_step
                 )
@@ -457,8 +457,8 @@ class Cupola(geom_3d.SimpleShape):
             faces,
             colors=(cols, col_i),
             name=(
-                f"Cupola {self._cupola_data.base.n}/{self._cupola_data.base.n} with "
-                f"{self._cupola_data.side.n}/{self._cupola_data.side.n}"
+                f"Roof top polyhedron {self._shape_data.base.n}/{self._shape_data.base.n} with "
+                f"{self._shape_data.side.n}/{self._shape_data.side.n}"
             ),
         )
 
@@ -492,8 +492,8 @@ class Cupola(geom_3d.SimpleShape):
                 for s in solutions:
                     LOGGER.info("  %.2f degrees", s["angle"] * 180 / pi)
             solution = solutions[
-                self._cupola_data.use_index
-                if self._cupola_data.use_index < len(solutions)
+                self._shape_data.use_index
+                if self._shape_data.use_index < len(solutions)
                 else 0
             ]
             LOGGER.info("Using fold angle %.2f degrees", solution["angle"] * 180 / pi)
@@ -657,7 +657,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-b",
         "--file_base_name",
-        default="cupola_",
+        default="roof_top_",
         help="A header to name of the file. This will be used as a base for the OFF file. "
         "It will be appended by n_m__n_p.off.",
     )
@@ -733,7 +733,7 @@ if __name__ == "__main__":
     else:
         os.mkdir(ARGS.out_dir)
 
-    shape = Cupola(
+    shape = RoofTop(
         Polygram(ARGS.base_n, ARGS.base_m),
         Polygram(ARGS.side_n, ARGS.side_m),
         not ARGS.allow_holes,
