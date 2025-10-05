@@ -212,9 +212,9 @@ class RoofTop(geom_3d.SimpleShape):
                 is set.
         """
         if base.n < 3:
-            raise ValueError("n must be bigger than 3")
-        if side.n < 3:
-            raise ValueError("n must be bigger than 3")
+            raise ValueError("the base must at least have a 3-fold rotation axis")
+        if side.n < 4:
+            raise ValueError("the side must at least have a 4-fold rotation axis")
 
         # any data for this shape
         self._shape_data = Object()
@@ -309,7 +309,7 @@ class RoofTop(geom_3d.SimpleShape):
             )
 
         # For balancing the two sides: it is better to rotate both: -angle/2 and angle/2
-        # The the rotationa axis for the orbit shape will be the z-axis
+        # The rotation axis for the orbit shape will be the z-axis
         half_angle = solutions[index]["angle"] / 2
 
         # Add translated origin and make the fold incl. the origin
@@ -322,20 +322,22 @@ class RoofTop(geom_3d.SimpleShape):
         side_vs_t0 = side_vs_t0[:-1]
         side_vs_t1 = side_vs_t1[:-1]
 
-        # translate back
+        # translate back and create a 2D list of vertices holding both sides
         both_sides = translate_list_of_vs(side_vs_t0, new_origin)
         next_side_i = len(both_sides)
         both_sides.extend(translate_list_of_vs(side_vs_t1, new_origin))
 
-        # add one edge, that needs to attached to {n/p}
+        # add one edge, that needs to be attached to {n/p}
         both_sides.append([both_sides[0][2], both_sides[next_side_i][2]])
 
         #######
         #  2  #
         #######
         # Attach to the base {n/m}
-        top_vs = get_polygon(self._shape_data.base.n, self._shape_data.base.m)
-        both_sides = self._attach_edges(both_sides, [0, 1], top_vs[0][:2], sub_index=-1)
+        base_vs = get_polygon(self._shape_data.base.n, self._shape_data.base.m)
+        both_sides = self._attach_edges(
+            both_sides, [0, 1], base_vs[0][:2], sub_index=-1
+        )
 
         # remove that edge again
         del both_sides[-1]
@@ -346,14 +348,14 @@ class RoofTop(geom_3d.SimpleShape):
             self._shape_data.base.n,
             self._shape_data.base.m,
         )
-        axis_direction = top_vs[0][0] - top_vs[0][1]
-        axis_through = top_vs[0][0]
+        axis_direction = base_vs[0][0] - base_vs[0][1]
+        axis_through = base_vs[0][0]
         fold_vertex = both_sides[0][3]
 
         def fold_result(alpha):
             transform = geomtypes.Rot3NonCentered(axis_direction, axis_through, alpha)
             new_vec = transform * fold_vertex
-            return abs(2 - (top_vs[0][-1] - new_vec).norm())
+            return abs(2 - (base_vs[0][-1] - new_vec).norm())
 
         solutions = []
         no_of_steps = 20
@@ -393,6 +395,21 @@ class RoofTop(geom_3d.SimpleShape):
             raise ValueError("Try with other parameters")
 
         LOGGER.info("Found %d solutions:", len(solutions))
+        # We expect 2 solutoins: one where the vertex is on the same side as the triangle that's
+        # being attached and one that is one the opposite side.
+        if len(solutions) > 2:
+            LOGGER.error(
+                "Unexpected number of solutions found to fit {%d/%d} roofs to {%d/%d}",
+                self._shape_data.side.n,
+                self._shape_data.side.m,
+                self._shape_data.base.n,
+                self._shape_data.base.m,
+            )
+            raise ValueError("Try with other solver or lower required precision")
+
+        if len(solutions) == 2:
+            assert (solutions[0] < 0) != (solutions[1] < 1), "Lower required precision?"
+
         for angle in solutions:
             LOGGER.info("  %0.2f degrees", geom_3d.RAD2DEG * angle)
         # TODO: check length
@@ -408,18 +425,22 @@ class RoofTop(geom_3d.SimpleShape):
         both_sides = [[transform * v for v in face] for face in both_sides]
         extra_triangle = [
             both_sides[0][3],
-            top_vs[0][0],
-            top_vs[0][-1],
+            base_vs[0][0],
+            base_vs[0][-1],
         ]
+        # Check whether the top of the extra triangle ends up on the same side
+        # as the top of the roof.
+        # This can be used for the file name to distinguish the max two different versions
+        self.same_side = (extra_triangle[0][2] < 0) == (both_sides[0][1][2] < 0)
 
         #######
         #  3  #
         #######
         # Put these together
         if self._shape_data.add_base:
-            for face in top_vs:
+            for face in base_vs:
                 face.reverse()
-            add_face_list(top_vs, self.base_col)
+            add_face_list(base_vs, self.base_col)
         if self._shape_data.use_whole_roof:
             to_orbit = both_sides
         else:
@@ -692,6 +713,15 @@ if __name__ == "__main__":
         "the script will ask interactively whether to overwrite an existing file.",
     )
     parser.add_argument(
+        "-r",
+        "--rotate",
+        metavar="DEG",
+        nargs=3,
+        type=float,
+        help="Rotate the model a certain amount of degrees around the x-axis, then the y-axis, "
+        "then the z-axis.",
+    )
+    parser.add_argument(
         "--use_whole_roof",
         action="store_true",
         help="If specified the {n/p} polygon that was used to construct a half-hip roof is kept in "
@@ -717,11 +747,10 @@ if __name__ == "__main__":
         "shape. This is useful when --add_extra_triangles is set.",
     )
     parser.add_argument(
-        "-x",
-        "--x-rotate",
-        metavar="DEG",
-        type=float,
-        help="Rotate the model a certain amount of degrees around the x-axis.",
+        "--precision",
+        type=int,
+        default=13,
+        help="Specify how digits after the comma should be used when saving the off file.",
     )
     ARGS = parser.parse_args()
 
@@ -739,24 +768,22 @@ if __name__ == "__main__":
         not ARGS.allow_holes,
         ARGS,
     )
-    shape.transform(geomtypes.Roty(angle=-pi / 2))
 
     sum_of_vs = geomtypes.Vec3([0, 0, 0])
     for v in shape.vs:
         sum_of_vs += v
     shape.translate(-sum_of_vs / len(shape.vs))
 
-    if ARGS.x_rotate:
-        shape.transform(
-            geomtypes.Rot3(
-                angle=geom_3d.DEG2RAD * ARGS.x_rotate,
-                axis=geomtypes.Vec3([1, 0, 0]),
-            )
-        )
-
-    model = (
-        f"{ARGS.base_n}_{ARGS.base_m}__{ARGS.side_n}_{ARGS.side_m}_{ARGS.angle_index}"
-    )
+    if ARGS.rotate:
+        transform = geomtypes.E
+        for rotate, angle in zip(
+            [geomtypes.Rotx, geomtypes.Roty, geomtypes.Rotz], ARGS.rotate
+        ):
+            transform = rotate(angle=geom_3d.DEG2RAD * angle) * transform
+        shape.transform(transform)
+    # + and - work for file names, but + doesn't work for URLs
+    extra = "-s" if shape.same_side else "-o"
+    model = f"{ARGS.base_n}_{ARGS.base_m}__{ARGS.side_n}_{ARGS.side_m}{extra}"
     filepath = (
         Path(ARGS.out_dir) / f"{ARGS.file_base_name}{model}{ARGS.file_tail_name}.off"
     )
@@ -768,5 +795,5 @@ if __name__ == "__main__":
 
     with open(filepath, "w") as fd:
         minimized_shape = shape.clean_shape(shape.exp_tol_eq_float)
-        fd.write(minimized_shape.to_off())
+        fd.write(minimized_shape.to_off(precision=ARGS.precision))
         LOGGER.info("Written %s", filepath)
