@@ -204,8 +204,8 @@ class RoofTop(geom_3d.SimpleShape):
             shown well in a 3D player, e.g. holes might appear at parts that have even coverage.
         args: a Namespace object with the following fields:
             angle_index: If more than one triangle angle is found, use the specified index.
-            use_whole_roof: If True then the {n/p} polygon that use to construct a half-hip roof
-                is kept in the final shape. Otherwise only one side of the roof is kept.
+            use_half_roof: If True then only one side of the roof is used when the roof top is
+                copied around the rotation axis of the base.
             add_extra_triangles: If True then the extra equilateral triangles are added. These extra
                 triangles are from attaching the roofs to the base polygon.
             no_base: if set then the base isn't added, which can make sense when add_extra_triangles
@@ -223,7 +223,7 @@ class RoofTop(geom_3d.SimpleShape):
         self._shape_data.base_at_z = 0
         self._shape_data.use_outlines = use_outlines
         self._shape_data.use_index = args.angle_index
-        self._shape_data.use_whole_roof = args.use_whole_roof
+        self._shape_data.use_half_roof = args.use_half_roof
         self._shape_data.add_extra_triangles = args.add_extra_triangles
         self._shape_data.add_base = not args.no_base
 
@@ -407,9 +407,6 @@ class RoofTop(geom_3d.SimpleShape):
             )
             raise ValueError("Try with other solver or lower required precision")
 
-        if len(solutions) == 2:
-            assert (solutions[0] < 0) != (solutions[1] < 1), "Lower required precision?"
-
         for angle in solutions:
             LOGGER.info("  %0.2f degrees", geom_3d.RAD2DEG * angle)
         # TODO: check length
@@ -441,10 +438,10 @@ class RoofTop(geom_3d.SimpleShape):
             for face in base_vs:
                 face.reverse()
             add_face_list(base_vs, self.base_col)
-        if self._shape_data.use_whole_roof:
-            to_orbit = both_sides
-        else:
+        if self._shape_data.use_half_roof:
             to_orbit = both_sides[next_side_i:]
+        else:
+            to_orbit = both_sides
         triangles = [
             [both_sides[0][1], both_sides[0][2], both_sides[next_side_i][2]],
             [both_sides[0][0], both_sides[next_side_i][-1], both_sides[0][-1]],
@@ -722,10 +719,10 @@ if __name__ == "__main__":
         "then the z-axis.",
     )
     parser.add_argument(
-        "--use_whole_roof",
+        "--use_half_roof",
         action="store_true",
-        help="If specified the {n/p} polygon that was used to construct a half-hip roof is kept in "
-        "the final shape. Otherwise only one side of the roof is kept.",
+        help="If specified of the roof top only one {m/q} polygon is used when it is copied around "
+        "the rotation axis of the base.",
     )
     parser.add_argument(
         "--add_extra_triangles",
