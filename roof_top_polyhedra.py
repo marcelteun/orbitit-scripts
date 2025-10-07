@@ -208,6 +208,8 @@ class RoofTop(geom_3d.SimpleShape):
                 copied around the rotation axis of the base.
             add_extra_triangles: If True then the extra equilateral triangles are added. These extra
                 triangles are from attaching the roofs to the base polygon.
+            add_extra_base: if specified then the vertices of the extra triangles will be used to
+                to create an extra base. Only specify this if add_extra_triangles is specified
             no_base: if set then the base isn't added, which can make sense when add_extra_triangles
                 is set.
         """
@@ -224,6 +226,7 @@ class RoofTop(geom_3d.SimpleShape):
         self._shape_data.use_outlines = use_outlines
         self._shape_data.use_index = args.angle_index
         self._shape_data.use_half_roof = args.use_half_roof
+        self._shape_data.add_extra_base = args.add_extra_base
         self._shape_data.add_extra_triangles = args.add_extra_triangles
         self._shape_data.add_base = not args.no_base
 
@@ -460,15 +463,38 @@ class RoofTop(geom_3d.SimpleShape):
                 self.side_polygon_col,
             )
         no_of_triangles = 3 if self._shape_data.add_extra_triangles else 2
+        transforms = [
+            geomtypes.Rot3(axis=geomtypes.Vec3([0, 0, 1]), angle=i * angle_step)
+            for i in range(self._shape_data.base.n)
+        ]
         for j in range(no_of_triangles):
-            for i in range(self._shape_data.base.n):
-                transform = geomtypes.Rot3(
-                    axis=geomtypes.Vec3([0, 0, 1]), angle=i * angle_step
-                )
+            for transform in transforms:
                 add_face(
                     [transform * v for v in triangles[j]],
                     self.triangle_col[j],
                 )
+
+        if self._shape_data.add_extra_base:
+            # Generate array of vetices by rotating the first vertex around the axis. Find index in
+            # array for the second vertex, this is the step. Check whether the length is divisble
+            # by the steps.
+            opposite_triangle = triangles[1]
+            base2_vs = [transform * opposite_triangle[1] for transform in transforms]
+            with geomtypes.FloatHandler(self.exp_tol_eq_float):
+                for step, v in enumerate(base2_vs):
+                    if v == opposite_triangle[2]:
+                        break
+                else:
+                    raise AssertionError(
+                        "Vertex not found, decrease compare precision?"
+                    )
+            n = self._shape_data.base.n
+            no_of_compounds = gcd(n, step)
+            extra_base = [
+                [base2_vs[(offset + i * step) % n] for i in range(n // no_of_compounds)]
+                for offset in range(no_of_compounds)
+            ]
+            add_face_list(extra_base, self.base_col)
 
         super().__init__(
             vertices,
@@ -736,6 +762,14 @@ if __name__ == "__main__":
         "means that each edge of the base will join three faces: the triangles from the roof, the "
         "the base and the extra triangles. Therefore it makes sense to remove the base in this "
         "case.",
+    )
+    parser.add_argument(
+        "--add_extra_base",
+        action="store_true",
+        # TODO: or should be use the edges of the opposite triangles. For {8/1} base and {4/1} roofs
+        # that is the same. Is that always the case?
+        help="if specified then the vertices of the extra triangles will be used to create an "
+        "extra base. Only specify this if add_extra_triangles is specified",
     )
     parser.add_argument(
         "--no_base",
