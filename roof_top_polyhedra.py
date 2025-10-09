@@ -217,6 +217,9 @@ class RoofTop(geom_3d.SimpleShape):
             raise ValueError("the base must at least have a 3-fold rotation axis")
         if side.n < 4:
             raise ValueError("the side must at least have a 4-fold rotation axis")
+        denom = gcd(side.n, side.m)
+        if side.n % denom == 0 and side.n / denom < 4:
+            raise ValueError("Wrong side polygon: leads to triangles or digons")
 
         # any data for this shape
         self._shape_data = Object()
