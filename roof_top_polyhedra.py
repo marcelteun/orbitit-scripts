@@ -212,6 +212,12 @@ class RoofTop(geom_3d.SimpleShape):
                 to create an extra base. Only specify this if add_extra_triangles is specified
             no_base: if set then the base isn't added, which can make sense when add_extra_triangles
                 is set.
+            del_no_of_base_triangles: remove the specified amount of triangles that are attached to
+                the base polygon.
+            del_no_of_opposite_triangles: remove the specified amount of roof triangles that are
+                attached to the base polygon.
+            del_no_of_opposite_triangles: remove the specified amount of roof triangles aren't
+                attached to the base polygon.
         """
         if base.n < 3:
             raise ValueError("the base must at least have a 3-fold rotation axis")
@@ -232,6 +238,10 @@ class RoofTop(geom_3d.SimpleShape):
         self._shape_data.add_extra_base = args.add_extra_base
         self._shape_data.add_extra_triangles = args.add_extra_triangles
         self._shape_data.add_base = not args.no_base
+        self._shape_data.del_no_of_base_triangles = args.del_no_of_base_triangles
+        self._shape_data.del_no_of_opposite_triangles = (
+            args.del_no_of_opposite_triangles
+        )
 
         if use_outlines:
             LOGGER.info("Using outlines, OFF files will not load in Stella!")
@@ -456,7 +466,8 @@ class RoofTop(geom_3d.SimpleShape):
         # for face in to_orbit:
         #    face.reverse()
         angle_step = TWO_PI / self._shape_data.base.n
-        # Note: it is less efficient to have separate loops here, but then the faces are sorted
+        # Note: it is less efficient to have separate loops here, but then the faces are sorted by
+        # type / colour
         for i in range(self._shape_data.base.n):
             transform = geomtypes.Rot3(
                 axis=geomtypes.Vec3([0, 0, 1]), angle=i * angle_step
@@ -470,12 +481,19 @@ class RoofTop(geom_3d.SimpleShape):
             geomtypes.Rot3(axis=geomtypes.Vec3([0, 0, 1]), angle=i * angle_step)
             for i in range(self._shape_data.base.n)
         ]
+        which_to_delete = [
+            self._shape_data.del_no_of_base_triangles,
+            self._shape_data.del_no_of_opposite_triangles,
+            0,
+        ]
         for j in range(no_of_triangles):
-            for transform in transforms:
-                add_face(
-                    [transform * v for v in triangles[j]],
-                    self.triangle_col[j],
-                )
+            del_triangles = which_to_delete[j]
+            for trans_i, transform in enumerate(transforms):
+                if trans_i >= del_triangles:
+                    add_face(
+                        [transform * v for v in triangles[j]],
+                        self.triangle_col[j],
+                    )
 
         if self._shape_data.add_extra_base:
             # Generate array of vetices by rotating the first vertex around the axis. Find index in
@@ -785,6 +803,22 @@ if __name__ == "__main__":
         type=int,
         default=13,
         help="Specify how digits after the comma should be used when saving the off file.",
+    )
+    parser.add_argument(
+        "--del_no_of_base_triangles",
+        metavar="COUNT",
+        type=int,
+        default=0,
+        help="Remove the specified amount of roof triangles that are attached to the "
+        "base polygon.",
+    )
+    parser.add_argument(
+        "--del_no_of_opposite_triangles",
+        metavar="COUNT",
+        type=int,
+        default=0,
+        help="Remove the specified amount of roof triangles that aren't attached to the "
+        "base polygon.",
     )
     ARGS = parser.parse_args()
 
