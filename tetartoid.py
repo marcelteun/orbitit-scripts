@@ -573,7 +573,7 @@ if __name__ == "__main__":
                 "eq_angle": [(0, 4), (1, 3)],
             },
         },
-        # TODO: specify
+        # edge: E1_2_EQ_E3_4, angle: EQ_QUARTET
         "cube": {
             "abc": (0, 1, 1),
         },
