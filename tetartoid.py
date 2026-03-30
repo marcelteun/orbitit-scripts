@@ -556,6 +556,11 @@ if __name__ == "__main__":
         "extended_regular_dodecahedron": {
             "abc": (0, 1, -tau),
         },
+        # edge: ALL_EQ
+        # angle: TWO_EQ_PAIRS
+        "tetrahedron": {
+            "abc": (1, 1, 3),
+        },
         # edge: E1_2_EQ_E3_4
         # angle: EQ_QUARTET
         "cube": {
@@ -790,13 +795,13 @@ if __name__ == "__main__":
     start_with = (1, 2.3, 1.3)
     start_with = (1, 3.0, 2.7)
     start_with = (1.1, 0., 2.0)
-    start_with = (0.4, 0.8, 2)
+    start_with = (1, 0.99, 0.99)
     #start_with = (1., 1.5, 1.5)
     optimize_for = {
-        "opt_i": (0, 1),
+        "opt_i": (1, 2),
         #"method": try_methods[1],
-        "eq_edge_len": [1, 2],
-        #"eq_angle": [(0, 4), ],
+        "eq_edge_len": [3],
+        #"eq_angle": [(3, 4), ],
     }
     t = TetartoidEqEdgeLengths(start_with, optimize_for, name="test")
     LOGGER.info("=================================")
@@ -815,19 +820,18 @@ if __name__ == "__main__":
 
     # Check directly
     name = ""
-    name = "classic_tetartoid"
+    name = "four_tetras"
     if name:
         t = find_tetartoid(name)
     else:
         a, b, c = 0.9, 1, 1.1
         t = Tetartoid(a, b, c)
-    t.unify()
+    #t.unify()
     #t.log_properties()
     #print(t.face)
     #t.save_json("checking.json")
 
-    # TODO: handle 1, 1, 1 (tetrahedron)
-    # a, b, c = 1, 1, 1 - 1e-12
+    # a, b, c = 1, 1, 3
     # t = Tetartoid(a, b, c)
     # t.log_properties()
     # t.save_json()
