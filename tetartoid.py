@@ -286,7 +286,7 @@ class Tetartoid():
         LOGGER.info(line)
         if np.isnan(np.sum(angles)):
             LOGGER.warning(">>> Inproper tetartoid <<<")
-        LOGGER.info("A, B, C = %f, %f, %f", self.a, self.b, self.c)
+        LOGGER.info("A, B, C = %0.15f, %0.15f, %0.15f", self.a, self.b, self.c)
         LOGGER.info("Edge category: %s", cat[0].name)
         LOGGER.info("Angle category: %s", cat[1].name)
         match cat[0]:
@@ -460,15 +460,10 @@ class TetartoidEqEdgeLengths(Tetartoid):
         delta_edge_len = 0
         for value in self.optimize["eq_edge_len"]:
             edges = get_edge_lengths(get_edges(face))
-            if value < 3:
-                # 1. edges v[1] - v[2] and v[2] - v[3] are shared: i.e. they have the same length
-                # 2. edges v[3] - v[4] and v[4] - v[0] are also shared.
-                # edge length v[0] - v[1] should be equal to either of these
-                # They meet each other at a 2-fold axis
-                d_edge = edges[1] if value else edges[3]
-                delta_edge_len += np.abs(edges[0] - d_edge)
-            else:
-                delta_edge_len += np.abs(edges[1] - edges[3])
+            i_j = [None, (0, 1), (0, 3), (1, 3)][value]
+            if i_j:
+                i, j = i_j
+                delta_edge_len += np.abs(edges[i] - edges[j])
         # If |e0| == |e1| (== |e2|)
         # Then preferably the angles (e0, e1) == (e1, e2)
         # Similarly:
@@ -586,11 +581,13 @@ if __name__ == "__main__":
             # should be 1, 1, lim x->1 x
             "abc": (1, 1, 1 - 1e-10)
         },
+        # edge: E0_EQ_E1_E2
+        # angle: GENERAL
         "classic_tetartoid": {
             "start_with": (0.4, 0.8, 2),
             "optimize_for": {
                 "opt_i": (0, 1),
-                "eq_edge_len": [2],
+                "eq_edge_len": [1],
             },
         },
         "four_tetras": {
@@ -632,7 +629,7 @@ if __name__ == "__main__":
             "optimize_for": {
                 "opt_i": (0, 1),
                 "method": try_methods[1],
-                "eq_edge_len": [2],
+                "eq_edge_len": [1],
                 "eq_angle": [(0, 4), ],
             },
         },
@@ -641,16 +638,8 @@ if __name__ == "__main__":
             "start_with": (1., 0.2, 2.5),
             "optimize_for": {
                 "opt_i": (0, 1),
-                "eq_edge_len": [2],
+                "eq_edge_len": [1],
                 "eq_angle": [(0, 4), ],
-            },
-        },
-        "v_shape_face_pyramids_small": {
-            "start_with": (1.6, -0.1, 1.5),
-            "optimize_for": {
-                "opt_i": (0, 1),
-                "method": try_methods[4],
-                "eq_angle": [(3, 4), (0, 1)],
             },
         },
         "spiky_butterfly": {
@@ -687,11 +676,34 @@ if __name__ == "__main__":
                 "eq_angle": [(3, 4), ],
             },
         },
-        "v_shape_face_pyramids": {
+        # edge: E0_EQ_E3_4
+        # angle: GENERAL
+        "v_shape_face_pyramids_1": {
+            # 1, -0.079390874047626, -2.551894699132569
             "start_with": (1.1, 0.0, 2.0),
             "optimize_for": {
                 "opt_i": (0, 1),
                 "eq_edge_len": [2],
+            },
+        },
+        # edge: E0_EQ_E1_2
+        # angle: GENERAL
+        "v_shape_face_pyramids_inv": {
+            # 1, , 0.004761203017896, 2.563964321119920
+            "start_with": (1.1, 0.0, 2.0),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "eq_edge_len": [1],
+            },
+        },
+        # edge: GENERAL
+        # angle: ONE_EQ_PAIR
+        "v_shape_face_pyramids_small": {
+            "start_with": (1.6, -0.1, 1.5),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "method": try_methods[4],
+                "eq_angle": [(3, 4), (0, 1)],
             },
         },
         "twist": {
@@ -741,10 +753,11 @@ if __name__ == "__main__":
     start_with = (1.1, 0., 2.0)
     start_with = (1., 0.2, 2.5)
     #start_with = (1., 1.5, 1.5)
+    start_with = (1.1, 0.0, 2.0)
     optimize_for = {
-        "opt_i": (0, 2),
+        "opt_i": (0, 1),
         #"method": try_methods[1],
-        "eq_edge_len": [3],
+        "eq_edge_len": [2],
         #"eq_angle": [(0, 4), ],
     }
     t = TetartoidEqEdgeLengths(start_with, optimize_for, name="test")
@@ -764,7 +777,10 @@ if __name__ == "__main__":
 
     # Check directly
     name = ""
-    name = "regular_dodecahedron"
+    name = "classic_tetartoid"
+    name = "v_shape_face_butterfly_alt"
+    name = "v_shape_face_butterfly"
+    name = "v_shape_face_pyramids_small"
     if name:
         t = find_tetartoid(name)
     else:
