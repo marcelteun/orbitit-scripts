@@ -15,6 +15,8 @@ class AngleCat(IntEnum):
     GENERAL = auto()  # there a five difference angles
     ONE_EQ_PAIR = auto()  # there is one pair with the same angle
     TWO_EQ_PAIRS = auto()  # there are two pairs with the same angle
+    EQ_PAIR_AND_TRIPLE = auto()  # there is one pairs and a triplet with the same angle
+    EQ_QUARTET = auto()  # there are four angles the same angle
     ALL_EQ = auto()  # all angles are the same
 
 LOGGER = logging.getLogger("tetartoid")
@@ -74,7 +76,7 @@ class Tetartoid():
     rtol = 1e-5
     atol = 1e-8
 
-    def __init__(self, a, b, c, name=None):
+    def __init__(self, a, b, c, name="A4"):
         """
         name: will be used as Shape name
         """
@@ -153,6 +155,10 @@ class Tetartoid():
         This makes it possible to compare."""
         if not np.isclose(self.a, 0):
             self.rescale(1 / self.a)
+        elif not np.isclose(self.b, 0):
+            self.rescale(1 / self.b)
+        elif not np.isclose(self.c, 0):
+            self.rescale(1 / self.c)
 
     def rescale(self, factor):
         """Scale a, b and c."""
@@ -219,13 +225,44 @@ class Tetartoid():
             case 2:
                 i0, j0 = eq_pairs[0]
                 if i0 in eq_pairs[1] or j0 in eq_pairs[1]:
+                    LOGGER.warning("Edge lengths: %s", edge_lengths)
+                    LOGGER.warning("Angles (rad): %s", angles)
                     raise ValueError("Undefined angle category triplets")
                 angle_cat = AngleCat.TWO_EQ_PAIRS
                 angle_spec = tuple(eq_pairs)
+            case 3:
+                # There must be a triplet at least:
+                combos = []
+                # Note that for (i, j) 'i' won't appear in the following tuples because of the break
+                # statement above.
+                for pair in eq_pairs:
+                    # Add to combos
+                    for combo in combos:
+                        if pair[0] in combo:
+                            combo.append(pair[1])
+                            break
+                    else:
+                        # add as new combo
+                        combos.append(list(pair))
+                if len(combos) == 2:
+                    # should be one pair and a triplet:
+                    assert len(combos[0]) == 3 or len(combos[1]) == 3, \
+                        "Expected one triplet"
+                    assert len(combos[0]) == 2 or len(combos[1]) == 2, \
+                        "Expected one pair"
+                    angle_cat = AngleCat.EQ_PAIR_AND_TRIPLE
+                elif len(combos) == 1:
+                    angle_cat = AngleCat.EQ_QUARTET
+                else:
+                    assert False, "Programming error handling three eq_pairs (quartet?)"
+                angle_spec = tuple(combos)
             case 4:
                 angle_cat = AngleCat.ALL_EQ
                 angle_spec = tuple(eq_pairs)
             case _:
+                LOGGER.warning("Edge lengths: %s", edge_lengths)
+                LOGGER.warning("Angles (rad): %s", angles)
+                t.save_json(filename="unknown.json")
                 raise ValueError("Undefined angle category")
 
         return edge_cat, angle_cat, angle_spec
@@ -239,6 +276,7 @@ class Tetartoid():
         LOGGER.info("Tetartoid '%s'", self.name)
         LOGGER.info("A, B, C = %f, %f, %f", self.a, self.b, self.c)
         LOGGER.info("Edge category: %s", cat[0].name)
+        LOGGER.info("Angle category: %s", cat[1].name)
         edges = get_edges(self.face)
         edge_lengths = get_edge_lengths(edges)
         angles = get_edge_angles(self.face)
@@ -282,13 +320,39 @@ class Tetartoid():
             case _:
                 raise ValueError("Unhandled edge category")
 
-        for i, j in cat[2]:
-            LOGGER.info(
-                "Angle no. %i close to %i with difference of %0.1e°",
-                i,
-                j,
-                np.rad2deg(np.abs(angles[i] - angles[j])),
-            )
+        for equals in cat[2]:
+            if len(equals) == 2:
+                LOGGER.info(
+                    "Angle no. %i close to %i with difference of %0.1e°",
+                    equals[0],
+                    equals[1],
+                    np.rad2deg(np.abs(angles[equals[0]] - angles[equals[1]])),
+                )
+            elif len(equals) == 3:
+                LOGGER.info(
+                    "Angle no. %i, %i and %i close to each other and difference with first of "
+                    "%0.1e° and %0.1e°",
+                    equals[0],
+                    equals[1],
+                    equals[2],
+                    np.rad2deg(np.abs(angles[equals[0]] - angles[equals[1]])),
+                    np.rad2deg(np.abs(angles[equals[0]] - angles[equals[2]])),
+                )
+            elif len(equals) == 4:
+                LOGGER.info(
+                    "Angle no. %i, %i, %i and %i close to each other and difference with first of "
+                    "%0.1e°, %0.1e° and %0.1e°",
+                    equals[0],
+                    equals[1],
+                    equals[2],
+                    equals[3],
+                    np.rad2deg(np.abs(angles[equals[0]] - angles[equals[1]])),
+                    np.rad2deg(np.abs(angles[equals[0]] - angles[equals[2]])),
+                    np.rad2deg(np.abs(angles[equals[0]] - angles[equals[3]])),
+                )
+            else:
+                breakpoint()
+                assert False, "Programming error handling three eq_pairs (quartet?)"
         for i, angle in enumerate(angles):
             LOGGER.info("Angle at vertex no. %d is %0.10f°", i, np.rad2deg(angle))
 
@@ -306,7 +370,7 @@ class TetartoidEqEdgeLengths(Tetartoid):
             https://en.wikipedia.org/wiki/Dodecahedron#Tetartoid
         optimize_for: a dictionary configuring the optimizer. It can have the following fields:
             'optimizer': the name of the optimizer, see scipy minimize
-            'keep_index': index in init_abc of which value that is not supposed to be optimized.
+            'opt_i': specify which indices in init_abc should be optimized
             'eq_edge_len': This parameter will instruct the optimizer to strive for edges with
                 equal lengths. For a Tetartoid holds that the edges between vertex 1 and 2 and 2 and
                 3 always have the same length and the edges between vertices with indices 3 and 4
@@ -328,8 +392,8 @@ class TetartoidEqEdgeLengths(Tetartoid):
             optimize_for["eq_edge_len"] = []
         if "eq_angle" not in optimize_for:
             optimize_for["eq_angle"] = []
-        if "keep_index" not in optimize_for:
-            optimize_for["keep_index"] = 0
+        if "opt_i" not in optimize_for:
+            optimize_for["opt_i"] = (1, 2)
         if "method" not in optimize_for:
             optimize_for["method"] = "Powell"
         for value in optimize_for["eq_edge_len"]:
@@ -349,7 +413,8 @@ class TetartoidEqEdgeLengths(Tetartoid):
             )
         self._try_abc = list(init_abc)
         self.optimize = optimize_for
-        self._try_abc[optimize_for["keep_index"]] = init_abc[optimize_for["keep_index"]]
+        for i in optimize_for["opt_i"]:
+            self._try_abc[i] = init_abc[i]
         self.calc_x()
         super().__init__(*self._try_abc, name)
 
@@ -372,18 +437,8 @@ class TetartoidEqEdgeLengths(Tetartoid):
         return tetar_face(self._try_abc[0], self._try_abc[1], self._try_abc[2], e1, e2)
 
     def value_to_minimize(self, values):
-        # TODO: use dict mapping
-        match self.optimize["keep_index"]:
-            case 0:
-                indices = (1, 2)
-            case 1:
-                indices = (0, 2)
-            case 2:
-                indices = (0, 1)
-            case _:
-                assert False, "Unexpected keep_index should have been caught earlier."
-        self._try_abc[indices[0]] = values[0]
-        self._try_abc[indices[1]] = values[1]
+        for i, opt_i in enumerate(self.optimize["opt_i"]):
+            self._try_abc[opt_i] = values[i]
 
         face = self._face
         delta_edge_len = 0
@@ -424,11 +479,6 @@ class TetartoidEqEdgeLengths(Tetartoid):
 
 
 if __name__ == "__main__":
-    a, b, c = 0.4, 0.8, 2
-    t = Tetartoid(a, b, c)
-    t.log_properties()
-    print("==========")
-
     set_of_tetartoids = {
     }
 
@@ -480,105 +530,183 @@ if __name__ == "__main__":
     # didn't optimize completely. I.e. would they go the whole way, then it would be a regular
     # regular dodecahedron
 
+    tau = (np.sqrt(5) + 1) / 2
     try_methods = ("Powell", "Nelder-Mead", "COBYQA", "BFGS", "SLSQP")
+    opt_setup = {
+        # edge: ALL_EQ, angle: ALL_EQ (1.5e-4)
+        # TODO: Use the real values, don't optimize
+        "regular_dodecahedron": {
+            "start_with": (0.0, 0.8, 2.0),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "eq_angle": [(0, 3), (1, 2)],
+            },
+        },
+        # edge: ALL_EQ, angle: EQ_PAIR_AND_TRIPLE
+        # TODO: don't optimize
+        "extended_regular_dodecahedron": {
+            "start_with": (1., 0.2, 2.5),
+            # Leads to a divide by 0 in method _face for e2:
+            # "start_with": (0.0, 1.0, -tau),
+            "optimize_for": {
+                "opt_i": (0, 2),
+                "eq_edge_len": [2],
+                "eq_angle": [(0, 4), (1, 3)],
+            },
+        },
+        # TODO: specify
+        "cube": {
+            "abc": (0, 1, 1),
+        },
+        # edge: GENERAL, angle: TWO_EQ_PAIRS
+        # A whole series for which a=1, 0 < b=c < 1
+        # TODO: need a way to check which one we found
+        "extended_cube": {
+            "abc": (1, 0.8, 0.8),
+        },
+        "classic_tetartoid": {
+            "start_with": (0.4, 0.8, 2),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "eq_edge_len": [2],
+            },
+        },
+        "four_tetras": {
+            "start_with": (1.6, -0.1, 1.5),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "method": try_methods[1],
+                "eq_angle": [(3, 4), (0, 1)],
+            },
+        },
+        "pentaspikes": {
+            "start_with": (0.4, 0.8, 2.0),
+            "optimize_for": {
+                "opt_i": (1, 2),
+                "eq_edge_len": [1],
+            },
+        },
+        "almost_bilateral": {
+            "start_with": (0.4, 0.8, 2.0),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "eq_edge_len": [1],
+            },
+        },
+        "v_shape_face_self_intersect_butterfly": {
+            # Local minimum (delta = 1.9)
+            # With method Nelder-Mead / SLSQP a regular dodecahedron is obtained
+            # method: "COBYQA" see below
+            "start_with": (0.4, 0.8, 2.0),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "eq_edge_len": [1],
+                "eq_angle": [(0, 1)],
+            },
+        },
+        # edge: E0_EQ_E1_2, angle: TWO_EQ_PAIRS (1.5e-4)
+        "v_shape_face_butterfly_alt": {
+            "start_with": (1., 0.2, 2.5),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "method": try_methods[1],
+                "eq_edge_len": [2],
+                "eq_angle": [(0, 4), ],
+            },
+        },
+        # edge: GENERAL, angle: TWO_EQ_PAIRS (1.5e-10)
+        "v_shape_face_butterfly": {
+            "start_with": (1., 0.2, 2.5),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "eq_edge_len": [2],
+                "eq_angle": [(0, 4), ],
+            },
+        },
+        "v_shape_face_pyramids_small": {
+            "start_with": (1.6, -0.1, 1.5),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "method": try_methods[4],
+                "eq_angle": [(3, 4), (0, 1)],
+            },
+        },
+        "almost_tetrahedron": {
+            # doesn't optimize well for angles (mininum = 7.3e-6)
+            "start_with": (-0.67, 0.67, 2),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "method": "Nelder-Mead",
+                "eq_angle": [(1, 2), (0, 3)],
+            },
+        },
+        "spiky_butterfly": {
+            # local minimum: (minimum = 8°)
+            "start_with": (0.2, 0.4, 1),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "eq_angle": [(1, 2), (0, 4)],
+            },
+        },
+        "4_point_star_self_inters": {
+            "start_with": (1, 2.3, 1.3),
+            "optimize_for": {
+                "opt_i": (1, 2),
+                #"method": try_methods[2],
+                "eq_edge_len": [1],
+                "eq_angle": [(3, 4), ],
+            },
+        },
+        # The following ones come in many variations, since only one requirement is met:
+        "self_inters_face_pyramids_0": {
+            "start_with": (1, 0.53, 0.73),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "eq_angle": [(3, 4), ],
+            },
+        },
+        "like_52nd_ico_stellation_0": {
+            "start_with": (1, 3.0, 2.7),
+            "optimize_for": {
+                "opt_i": (1, 2),
+                "eq_edge_len": [1],
+                "eq_angle": [(3, 4), ],
+            },
+        },
+        "v_shape_face_pyramids": {
+            "start_with": (1.1, 0.0, 2.0),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "eq_edge_len": [2],
+            },
+        },
+        "twist": {
+            # local minimum: delta 1.5
+            "start_with": (0.2, 0.4, 1),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "eq_angle": [(3, 4), (0, 2)],
+            },
+        },
+        "v_shape_face_butterfly_0": {
+            "start_with": (0.4, 0.8, 2.0),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "method": "COBYQA",
+                "eq_edge_len": [1],
+                "eq_angle": [(0, 1)],
+            },
+        },
+    }
 
     def find_tetartoid(name):
-        match name:
-            case "regular_dodecahedron":
-                start_with = (0.0, 0.8, 2.0)
-                optimize_for = {
-                    "keep_index": 2,
-                    "eq_angle": [(0, 3), (1, 2)],
-                }
-            case "pentaspikes":
-                start_with = (0.4, 0.8, 2.0)
-                optimize_for = {
-                    "keep_index": 0,
-                    "eq_edge_len": [1],
-                }
-            case "almost_bilateral":
-                start_with = (0.4, 0.8, 2.0)
-                optimize_for = {
-                    "keep_index": 2,
-                    "eq_edge_len": [1],
-                }
-            case "v_shape_face_self_intersect_butterfly":
-                # Local minimum (delta = 1.9)
-                # With method Nelder-Mead / SLSQP a regular dodecahedron is obtained
-                # method: "COBYQA" see below
-                start_with = (0.4, 0.8, 2.0)
-                optimize_for = {
-                    "keep_index": 2,
-                    "eq_edge_len": [1],
-                    "eq_angle": [(0, 1)],
-                }
-            case "v_shape_face_pyramids":
-                start_with = (1.1, 0.0, 2.0)
-                optimize_for = {
-                    "keep_index": 2,
-                    "eq_edge_len": [2],
-                }
-            case "v_shape_face_pyramids_small":
-                start_with = (1.6, -0.1, 1.5)
-                optimize_for = {
-                    "keep_index": 2,
-                    "method": try_methods[4],
-                    "eq_angle": [(3, 4), (0, 1)],
-                }
-            case "v_shape_face_butterfly":
-                start_with = (0.4, 0.8, 2.0)
-                optimize_for = {
-                    "keep_index": 2,
-                    "method": "COBYQA",
-                    "eq_edge_len": [1],
-                    "eq_angle": [(0, 1)],
-                }
-            case "almost_tetrahedron":
-                # doesn't optimize well for angles (mininum = 7.3e-6)
-                start_with = (-0.67, 0.67, 2)
-                optimize_for = {
-                    "keep_index": 2,
-                    "method": "Nelder-Mead",
-                    "eq_angle": [(1, 2), (0, 3)],
-                }
-            case "classic_tetartoid":
-                start_with = (0.4, 0.8, 2)
-                optimize_for = {
-                    "keep_index": 2,
-                    "eq_edge_len": [2],
-                }
-            case "twist":
-                # local minimum: delta 1.5
-                start_with = (0.2, 0.4, 1)
-                optimize_for = {
-                    "keep_index": 2,
-                    "eq_angle": [(3, 4), (0, 2)],
-                }
-            case "spiky_butterfly":
-                # local minimum: (minimum = 8°)
-                start_with = (0.2, 0.4, 1)
-                optimize_for = {
-                    "keep_index": 2,
-                    "eq_angle": [(1, 2), (0, 4)],
-                }
-            case _:
-                raise ValueError(f"Tertartoid {name} not found")
-        return TetartoidEqEdgeLengths(start_with, optimize_for, name=name)
+        setup = opt_setup[name]
+        if "abc" in setup:
+            return Tetartoid(*setup["abc"], name=name)
+        else:
+            return TetartoidEqEdgeLengths(setup["start_with"], setup["optimize_for"], name=name)
 
-    try_names = [
-        "regular_dodecahedron",
-        "pentaspikes",
-        "almost_bilateral",
-        "v_shape_face_self_intersect_butterfly",
-        "v_shape_face_pyramids",
-        "v_shape_face_pyramids_small",
-        "v_shape_face_butterfly",
-        "almost_tetrahedron",
-        "classic_tetartoid",
-        "twist",
-        "spiky_butterfly",
-    ]
-    for name in try_names:
+    for name in opt_setup.keys():
         t = find_tetartoid(name)
         if find_in_set(t) is None:
             add_to_set(t)
@@ -587,13 +715,23 @@ if __name__ == "__main__":
     for t in set_of_tetartoids.values():
         t.log_properties()
 
+    # TODO: You can still require that lengths 1,2 == 3, 4
+    # This is what you want for
+    # start_with = (1., x, x)
 
     # Try:
-    start_with = (1.6, -0.1, 1.5)
+    #tau = (np.sqrt(5) + 1) / 2
+    #start_with = (0., 1.0, -tau)
+    start_with = (1, 2.3, 1.3)
+    start_with = (1, 3.0, 2.7)
+    start_with = (1.1, 0., 2.0)
+    start_with = (1., 0.2, 2.5)
+    #start_with = (1., 1.5, 1.5)
     optimize_for = {
-        "keep_index": 2,
-        "method": try_methods[4],
-        "eq_angle": [(3, 4), (0, 1)],
+        "opt_i": (0, 2),
+        #"method": try_methods[1],
+        #"eq_edge_len": [2],
+        "eq_angle": [(0, 4), ],
     }
     t = TetartoidEqEdgeLengths(start_with, optimize_for, name="test")
     LOGGER.info("=================================")
@@ -607,4 +745,20 @@ if __name__ == "__main__":
         LOGGER.info("===============OLD===============")
         t1.log_properties()
         LOGGER.info("===============NEW===============")
-        t1.log_properties()
+        t.log_properties()
+
+    # Check directly
+    # Cube:
+    #a, b, c = 1e-9, 1, 1
+    #a, b, c = 0.5, 1, 1
+    #t = Tetartoid(a, b, c)
+    #t.unify()
+    #t.log_properties()
+    #t.save_json("checking.json")
+
+    # TODO: handle 1, 1, 1 (tetrahedron)
+    # a, b, c = 1, 1, 1 - 1e-12
+    # t = Tetartoid(a, b, c)
+    # t.log_properties()
+    # t.save_json()
+
