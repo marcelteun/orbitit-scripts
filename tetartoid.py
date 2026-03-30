@@ -542,7 +542,6 @@ if __name__ == "__main__":
     # t = TetartoidEqEdgeLengths((0.4, 0.8, 2.0), keep_index=1, method="Powell", eq_edge_len=1)
     # (0.4, 0.8, 2.0), keep_index=2, method="Powell", eq_edge_len=1, eq_angle=3
 
-    name = "almost_tetrahedron"
     name = "regular_dodecahedron"
 
     # I tried combinations of eq_angle. They all lead to "almost" regular dodecahedra and they
@@ -552,36 +551,40 @@ if __name__ == "__main__":
     tau = (np.sqrt(5) + 1) / 2
     try_methods = ("Powell", "Nelder-Mead", "COBYQA", "BFGS", "SLSQP")
     opt_setup = {
-        # edge: ALL_EQ, angle: ALL_EQ (1.5e-4)
-        # TODO: Use the real values, don't optimize
+        # edge: ALL_EQ
+        # angle: ALL_EQ
         "regular_dodecahedron": {
-            "start_with": (0.0, 0.8, 2.0),
-            "optimize_for": {
-                "opt_i": (0, 1),
-                "eq_angle": [(0, 3), (1, 2)],
-            },
+            "abc": (0, 1, tau + 1),
         },
-        # edge: ALL_EQ, angle: EQ_PAIR_AND_TRIPLE
-        # TODO: don't optimize
+        # edge: ALL_EQ
+        # angle: EQ_PAIR_AND_TRIPLE
         "extended_regular_dodecahedron": {
-            "start_with": (1., 0.2, 2.5),
-            # Leads to a divide by 0 in method _face for e2:
-            # "start_with": (0.0, 1.0, -tau),
-            "optimize_for": {
-                "opt_i": (0, 2),
-                "eq_edge_len": [2],
-                "eq_angle": [(0, 4), (1, 3)],
-            },
+            "abc": (0, 1, -tau),
         },
-        # edge: E1_2_EQ_E3_4, angle: EQ_QUARTET
+        # edge: E1_2_EQ_E3_4
+        # angle: EQ_QUARTET
         "cube": {
             "abc": (0, 1, 1),
         },
-        # edge: GENERAL, angle: TWO_EQ_PAIRS
+        # edge: E1_2_EQ_E3_4
+        # angle: EQ_PAIR_AND_TRIPLE
+        # should be 1, lim x->0: x, x
+        "3_crossing_lines": {
+            # degenerate
+            "abc": (1, 1e-14, 1e-14),
+        },
+        # edge: GENERAL
+        # angle: TWO_EQ_PAIRS
         # A whole series for which a=1, 0 < b=c < 1
         # TODO: need a way to check which one we found
         "extended_cube": {
             "abc": (1, 0.8, 0.8),
+        },
+        # edge: GENERAL
+        # angle: ONE_EQ_PAIR
+        "almost_tetrahedron": {
+            # should be 1, 1, lim x->1 x
+            "abc": (1, 1, 1 - 1e-10)
         },
         "classic_tetartoid": {
             "start_with": (0.4, 0.8, 2),
@@ -650,15 +653,6 @@ if __name__ == "__main__":
                 "eq_angle": [(3, 4), (0, 1)],
             },
         },
-        "almost_tetrahedron": {
-            # doesn't optimize well for angles (mininum = 7.3e-6)
-            "start_with": (-0.67, 0.67, 2),
-            "optimize_for": {
-                "opt_i": (0, 1),
-                "method": "Nelder-Mead",
-                "eq_angle": [(1, 2), (0, 3)],
-            },
-        },
         "spiky_butterfly": {
             # local minimum: (minimum = 8°)
             "start_with": (0.2, 0.4, 1),
@@ -677,6 +671,7 @@ if __name__ == "__main__":
             },
         },
         # The following ones come in many variations, since only one requirement is met:
+        # ------------------------------------------------------------
         "self_inters_face_pyramids_0": {
             "start_with": (1, 0.53, 0.73),
             "optimize_for": {
@@ -768,10 +763,13 @@ if __name__ == "__main__":
         t.log_properties()
 
     # Check directly
-    # Cube:
-    #a, b, c = 1e-9, 1, 1
-    a, b, c = 1, 1e-14, 1e-14
-    t = Tetartoid(a, b, c)
+    name = ""
+    name = "regular_dodecahedron"
+    if name:
+        t = find_tetartoid(name)
+    else:
+        a, b, c = 0.9, 1, 1.1
+        t = Tetartoid(a, b, c)
     t.unify()
     t.log_properties()
     print(t.face)
