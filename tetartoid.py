@@ -581,15 +581,6 @@ if __name__ == "__main__":
             # should be 1, 1, lim x->1 x
             "abc": (1, 1, 1 - 1e-10)
         },
-        # edge: E0_EQ_E1_E2
-        # angle: GENERAL
-        "classic_tetartoid": {
-            "start_with": (0.4, 0.8, 2),
-            "optimize_for": {
-                "opt_i": (0, 1),
-                "eq_edge_len": [1],
-            },
-        },
         "four_tetras": {
             "start_with": (1.6, -0.1, 1.5),
             "optimize_for": {
@@ -623,8 +614,11 @@ if __name__ == "__main__":
                 "eq_angle": [(0, 1)],
             },
         },
-        # edge: E0_EQ_E1_2, angle: TWO_EQ_PAIRS (1.5e-4)
-        "v_shape_face_butterfly_alt": {
+        # edge: E0_EQ_E1_2
+        # angle: TWO_EQ_PAIRS
+        # δ = 1.5e-4
+        "v_shape_face_butterfly_0": {
+            # "abc": (1, 0.210138278109585, 2.484461652493819),
             "start_with": (1., 0.2, 2.5),
             "optimize_for": {
                 "opt_i": (0, 1),
@@ -633,8 +627,31 @@ if __name__ == "__main__":
                 "eq_angle": [(0, 4), ],
             },
         },
-        # edge: GENERAL, angle: TWO_EQ_PAIRS (1.5e-10)
-        "v_shape_face_butterfly": {
+        # edge: E0_EQ_E3_4
+        # angle: TWO_EQ_PAIRS
+        # δ = 1.2e-7
+        "v_shape_face_butterfly_1": {
+            # "abc": (1, 0.484454027157523, 1.274316688874315),
+            "start_with": (1., 0.2, 2.5),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "method": try_methods[1],
+                "eq_edge_len": [2],
+                "eq_angle": [(0, 4), ],
+            },
+        },
+        # edge: GENERAL
+        # angle: TWO_EQ_PAIRS
+        # δ = 1.5e-10
+        "v_shape_face_butterfly_alt": {
+            # "abc": (1, 0.204142371201545, 2.551342236267743),
+            # Note
+            # that even though we are optimizing for one edge length and one angle, the result has
+            # two equal angles and no edges with the same length
+            # Changing eq_edge_len to 2 generates a slightly different model, but still having the
+            # same category:
+            # "abc": (1, 0.204125029072595, 2.551541651277570)
+            # and δ = 2.6e-12
             "start_with": (1., 0.2, 2.5),
             "optimize_for": {
                 "opt_i": (0, 1),
@@ -661,6 +678,28 @@ if __name__ == "__main__":
         },
         # The following ones come in many variations, since only one requirement is met:
         # ------------------------------------------------------------
+        # edge: E0_EQ_E1_E2
+        # angle: GENERAL
+        # δ = 0.0
+        "classic_tetartoid": {
+            # "abc": (1, -3.671535138208082, -9.339026119964645),
+            "start_with": (0.4, 0.8, 2),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "eq_edge_len": [1],
+            },
+        },
+        # edge: E0_EQ_E3_E4
+        # angle: GENERAL
+        # δ = 3.5e-15
+        "classic_tetartoid_1": {
+            # "abc": (1, 3.615386818341456, 9.196464579601590),
+            "start_with": (0.4, 0.8, 2),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "eq_edge_len": [1],
+            },
+        },
         "self_inters_face_pyramids_0": {
             "start_with": (1, 0.53, 0.73),
             "optimize_for": {
@@ -751,13 +790,12 @@ if __name__ == "__main__":
     start_with = (1, 2.3, 1.3)
     start_with = (1, 3.0, 2.7)
     start_with = (1.1, 0., 2.0)
-    start_with = (1., 0.2, 2.5)
+    start_with = (0.4, 0.8, 2)
     #start_with = (1., 1.5, 1.5)
-    start_with = (1.1, 0.0, 2.0)
     optimize_for = {
         "opt_i": (0, 1),
         #"method": try_methods[1],
-        "eq_edge_len": [2],
+        "eq_edge_len": [1, 2],
         #"eq_angle": [(0, 4), ],
     }
     t = TetartoidEqEdgeLengths(start_with, optimize_for, name="test")
@@ -778,18 +816,15 @@ if __name__ == "__main__":
     # Check directly
     name = ""
     name = "classic_tetartoid"
-    name = "v_shape_face_butterfly_alt"
-    name = "v_shape_face_butterfly"
-    name = "v_shape_face_pyramids_small"
     if name:
         t = find_tetartoid(name)
     else:
         a, b, c = 0.9, 1, 1.1
         t = Tetartoid(a, b, c)
     t.unify()
-    t.log_properties()
-    print(t.face)
-    t.save_json("checking.json")
+    #t.log_properties()
+    #print(t.face)
+    #t.save_json("checking.json")
 
     # TODO: handle 1, 1, 1 (tetrahedron)
     # a, b, c = 1, 1, 1 - 1e-12
