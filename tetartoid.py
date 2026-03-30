@@ -7,8 +7,9 @@ from scipy.optimize import minimize
 
 class EdgeCat(IntEnum):
     GENERAL = auto()  # there are three different edge lengths
-    E0_EQ_E1_2 = auto()  # edge 0 has equal length as edge 1 and 2
-    E0_EQ_E3_4 = auto()  # edge 0 has equal length as edge 3 and 4
+    E0_EQ_E1_2 = auto()  # edge 0 has the same length as edge 1 and 2
+    E0_EQ_E3_4 = auto()  # edge 0 has the same length as edge 3 and 4
+    E1_2_EQ_E3_4 = auto()  # edge 1 and 2 have the same length as edge 3 and 4
     ALL_EQ = auto()  # all edges have equal length
 
 class AngleCat(IntEnum):
@@ -205,6 +206,8 @@ class Tetartoid():
                 edge_cat = EdgeCat.E0_EQ_E1_2
         elif np.isclose(edge_lengths[0], edge_lengths[3]):
             edge_cat = EdgeCat.E0_EQ_E3_4
+        elif np.isclose(edge_lengths[1], edge_lengths[3]):
+            edge_cat = EdgeCat.E1_2_EQ_E3_4
         else:
             edge_cat = EdgeCat.GENERAL
 
@@ -273,13 +276,19 @@ class Tetartoid():
 
     def log_properties(self):
         cat = self.category
-        LOGGER.info("Tetartoid '%s'", self.name)
-        LOGGER.info("A, B, C = %f, %f, %f", self.a, self.b, self.c)
-        LOGGER.info("Edge category: %s", cat[0].name)
-        LOGGER.info("Angle category: %s", cat[1].name)
         edges = get_edges(self.face)
         edge_lengths = get_edge_lengths(edges)
         angles = get_edge_angles(self.face)
+        title = f"Tetartoid '{self.name}'"
+        line = "-" * len(title)
+        LOGGER.info(line)
+        LOGGER.info(title)
+        LOGGER.info(line)
+        if np.isnan(np.sum(angles)):
+            LOGGER.warning(">>> Inproper tetartoid <<<")
+        LOGGER.info("A, B, C = %f, %f, %f", self.a, self.b, self.c)
+        LOGGER.info("Edge category: %s", cat[0].name)
+        LOGGER.info("Angle category: %s", cat[1].name)
         match cat[0]:
             case EdgeCat.E0_EQ_E1_2:
                 LOGGER.info("There are two different edge lengths")
@@ -289,7 +298,6 @@ class Tetartoid():
                     "difference for 0 is %0.1e",
                     np.abs(edge_lengths[0] - edge_lengths[1]),
                 )
-                d0 = np.abs(edge_lengths[0] - edge_lengths[1])
             case EdgeCat.E0_EQ_E3_4:
                 LOGGER.info("There are two different edge lengths")
                 LOGGER.info("Edge lengths 1, 2 are %0.10f", edge_lengths[0])
@@ -297,6 +305,14 @@ class Tetartoid():
                 LOGGER.info(
                     "difference for 0 is %0.1e",
                     np.abs(edge_lengths[0] - edge_lengths[3]),
+                )
+            case EdgeCat.E1_2_EQ_E3_4:
+                LOGGER.info("There are two different edge lengths")
+                LOGGER.info("Edge length 0 is %0.10f", edge_lengths[0])
+                LOGGER.info("Edge lengths 1, 2, 3 and 4 are %0.10f", edge_lengths[1])
+                LOGGER.info(
+                    "The differences between 1 and 2, and 3 and 4 are %0.1e",
+                    np.abs(edge_lengths[1] - edge_lengths[3]),
                 )
             case EdgeCat.ALL_EQ:
                 LOGGER.info("All edge lengths are %0.10f", edge_lengths[0])
@@ -307,9 +323,7 @@ class Tetartoid():
                 )
             case EdgeCat.GENERAL:
                 LOGGER.info("There are three different edge lengths")
-                d0 = np.abs(edge_lengths[0] - edge_lengths[1])
-                d1 = np.abs(edge_lengths[0] - edge_lengths[3])
-                LOGGER.info("Edge lengths 0 is %0.10f", edge_lengths[0])
+                LOGGER.info("Edge length 0 is %0.10f", edge_lengths[0])
                 LOGGER.info("Edge lengths 1, 2 are %0.10f", edge_lengths[1])
                 LOGGER.info("Edge lengths 3, 4 are %0.10f", edge_lengths[3])
                 LOGGER.info(
@@ -359,7 +373,7 @@ class Tetartoid():
 
 class TetartoidEqEdgeLengths(Tetartoid):
 
-    valid_eq_edge_len = (0, 1, 2)
+    valid_eq_edge_len = (0, 1, 2, 3)
     valid_eq_angle = (0, 1, 2, 3, 4)
 
     def __init__(self, init_abc, optimize_for, name=""):
@@ -383,6 +397,8 @@ class TetartoidEqEdgeLengths(Tetartoid):
                    equal to the edges between vertex 1 and 2.
                 2: the optimizer will try to parameters for a, b, c so that the edge length becomes
                    equal to the edges between vertex 3 and 4.
+                Later a the following special value was added:
+                3: Try make edges 1 and 2 having the same length as edges 3 and 4.
             'eq_angle': This parameter instructs the optimizer to strive for a equal angles between
                 the sides at certain vertices. It is a list of two tuple with two vertex indices
                 specifying which angles should be equal.
@@ -442,14 +458,17 @@ class TetartoidEqEdgeLengths(Tetartoid):
 
         face = self._face
         delta_edge_len = 0
-        for value in  self.optimize["eq_edge_len"]:
+        for value in self.optimize["eq_edge_len"]:
             edges = get_edge_lengths(get_edges(face))
-            # 1. edges v[1] - v[2] and v[2] - v[3] are shared: i.e. they have the same length
-            # 2. edges v[3] - v[4] and v[4] - v[0] are also shared.
-            # edge length v[0] - v[1] should be equal to either of these
-            # They meet each other at a 2-fold axis
-            d_edge = edges[1] if value else edges[3]
-            delta_edge_len += np.abs(edges[0] - d_edge)
+            if value < 3:
+                # 1. edges v[1] - v[2] and v[2] - v[3] are shared: i.e. they have the same length
+                # 2. edges v[3] - v[4] and v[4] - v[0] are also shared.
+                # edge length v[0] - v[1] should be equal to either of these
+                # They meet each other at a 2-fold axis
+                d_edge = edges[1] if value else edges[3]
+                delta_edge_len += np.abs(edges[0] - d_edge)
+            else:
+                delta_edge_len += np.abs(edges[1] - edges[3])
         # If |e0| == |e1| (== |e2|)
         # Then preferably the angles (e0, e1) == (e1, e2)
         # Similarly:
@@ -730,12 +749,13 @@ if __name__ == "__main__":
     optimize_for = {
         "opt_i": (0, 2),
         #"method": try_methods[1],
-        #"eq_edge_len": [2],
-        "eq_angle": [(0, 4), ],
+        "eq_edge_len": [3],
+        #"eq_angle": [(0, 4), ],
     }
     t = TetartoidEqEdgeLengths(start_with, optimize_for, name="test")
     LOGGER.info("=================================")
     t1 = find_in_set(t)
+
     if t1 is None:
         LOGGER.info("*** New one found!")
         t.log_properties()
@@ -750,11 +770,12 @@ if __name__ == "__main__":
     # Check directly
     # Cube:
     #a, b, c = 1e-9, 1, 1
-    #a, b, c = 0.5, 1, 1
-    #t = Tetartoid(a, b, c)
-    #t.unify()
-    #t.log_properties()
-    #t.save_json("checking.json")
+    a, b, c = 1, 1e-14, 1e-14
+    t = Tetartoid(a, b, c)
+    t.unify()
+    t.log_properties()
+    print(t.face)
+    t.save_json("checking.json")
 
     # TODO: handle 1, 1, 1 (tetrahedron)
     # a, b, c = 1, 1, 1 - 1e-12
