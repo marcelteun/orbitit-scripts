@@ -637,6 +637,7 @@ if __name__ == "__main__":
         # each side consists of two rectangles
         "cube": {
             "abc": (0, 1, 1),
+            "related": lambda a, b, c: np.isclose(a, 1) and np.isclose(b, c) and b > 100,
         },
         # edge: GENERAL
         # angle: ONE_EQ_PAIR
@@ -646,21 +647,26 @@ if __name__ == "__main__":
             # Same result for
             # "abc": (1 + 1e-10, 1, 1),
         },
+        # edge: GENERAL
+        # angle: ONE_EQ_PAIR
+        # each side consists of two right trapezoids
+        "cubic": {
+            "abc": (1, 1.2, 1.2),
+            "related": lambda a, b, c: np.isclose(a, 1) and np.isclose(b, c) and (b > 1 or b < -1),
+        },
+        # edge: GENERAL
+        # angle: TWO_EQ_PAIRS
+        # A whole series for which a=1, 0 < b=c < 1
+        "extended_cube": {
+            "abc": (1, 0.8, 0.8),
+            "related": lambda a, b, c: np.isclose(a, 1) and np.isclose(b, c) and -1 < b < 1,
+        },
         # edge: E1_2_EQ_E3_4
         # angle: EQ_PAIR_AND_TRIPLE
         # should be 1, lim x->0: x, x
         "3_crossing_lines": {
             # degenerate
             "abc": (1, 1e-14, 1e-14),
-        },
-        # edge: GENERAL
-        # angle: TWO_EQ_PAIRS
-        # A whole series for which a=1, 0 < b=c < 1
-        # TODO: need a way to check which one we found
-        # FIXME: perhaps add a function accepting a, b, c -> boolean
-        "extended_cube": {
-            "abc": (1, 0.8, 0.8),
-            "related": lambda a, b, c: np.isclose(a, 1) and np.isclose(b, c) and 0 < b < 1,
         },
         # edge: GENERAL
         # angle: TWO_EQ_PAIRS
@@ -932,7 +938,7 @@ if __name__ == "__main__":
     }
     # Set if you want to test a, b, c directly
     abc = ()
-    abc = 1.0, 1.1, 1.1
+    abc = 1.0, -1-1e-11, -1-1e-11
     if abc:
         t = Tetartoid(*abc)
         t.save_json()
