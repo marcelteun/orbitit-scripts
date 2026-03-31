@@ -68,14 +68,17 @@ def get_edge_angles(face) -> list[float]:
     edges = get_edges(face)
     edge_lengths = get_edge_lengths(edges)
     no_of_vs = len(edges)
-    return [
+    result = [
         np.arccos(
-            np.dot(edges[i], edges[(i + 1) % no_of_vs]) / (
-                edge_lengths[i] * edge_lengths[(i + 1) % no_of_vs]
+            np.clip(
+                np.dot(edges[i], edges[(i + 1) % no_of_vs]) / (
+                    edge_lengths[i] * edge_lengths[(i + 1) % no_of_vs]
+                ), -1, 1
             )
         )
         for i in range(no_of_vs)
     ]
+    return result
 
 
 class Tetartoid():
@@ -339,7 +342,7 @@ class Tetartoid():
         LOGGER.info(title)
         LOGGER.info(line)
         if np.isnan(np.sum(angles)):
-            LOGGER.warning(">>> Inproper tetartoid <<<")
+            LOGGER.warning(">>> Improper tetartoid <<<")
         LOGGER.info("A, B, C = %0.15f, %0.15f, %0.15f", self.a, self.b, self.c)
         LOGGER.info("Edge category: %s", cat[0].name)
         LOGGER.info("Angle category: %s", cat[1].name)
@@ -696,17 +699,23 @@ if __name__ == "__main__":
             # abc = 1, lim x↓1 x, 1
             "abc": (1, 1 + 1e-10, 1)
         },
-        # edge: E0_EQ_E3_4 (δ = 1.7e-5)
-        # angle: ONE_EQ_PAIR (δ = 9.9e-5)
+        # edge: E0_EQ_E3_4 (δ = 2.7e-11)
+        # angle: ONE_EQ_PAIR (δ = 4.5e-10)
+        # Four tetrahedra on one tetrahedron
         "four_tetras": {
-            # "abc": (1, 0.999978909650798, 0.999985939824643),
-            "start_with": (1.6, -0.1, 1.5),
-            "optimize_for": {
-                "opt_i": (0, 1),
-                # Method seems essential
-                "method": try_methods[1],
-                "eq_angle": [(3, 4), (0, 1)],
-            },
+            "abc": (1, 1 - 1.5e-11, 1 - 1e-11),
+            "related": lambda a, b, c: np.isclose(a, 1) and \
+                np.isclose((1 - b) / (1 - c), 1.5) and \
+                np.isclose(b, 1),
+        },
+        # edge: E0_EQ_E1_2 (δ = 2.7e-11)
+        # angle: ONE_EQ_PAIR (δ = 4.5e-10)
+        # Four tetrahedra on one tetrahedron
+        "four_tetras_alt": {
+            "abc": (1, -1 - 1.5e-11, -1 - 1e-11),
+            "related": lambda a, b, c: np.isclose(a, 1) and \
+                np.isclose((1 + b) / (1 + c), 1.5) and \
+                np.isclose(b, -1),
         },
         "pentaspikes": {
             "start_with": (0.4, 0.8, 2.0),
@@ -921,24 +930,21 @@ if __name__ == "__main__":
     start_with = (1, 3.0, 2.7)
     start_with = (1.1, 0., 2.0)
     start_with = (1.0, 1., .9)
-    # Trying to improve four tetra0.999978909650798, 0.999985939824643s, tried method didn't helt
-    # tried eq_edge_len = 2 and eq_angle (3, 4) no go
     optimize_for = {
         "opt_i": (1, 2),
         "method": try_methods[1],
         #"eq_edge_len": [3],
         "eq_angle": [(3, 4), (0, 1)],
     }
-    start_with = (1.6, -0.1, 1.5)
-    optimize_for = {
-        "opt_i": (0, 1),
-        # Method seems essential
-        "method": try_methods[1],
-        "eq_angle": [(3, 4), (0, 1)],
-    }
     # Set if you want to test a, b, c directly
     abc = ()
-    abc = 1.0, -1-1e-11, -1-1e-11
+    # extended tetrahedron: abc = 1.0, 1-2e-11, 1-1e-1
+    # delta = -1e-1
+    # delta = 1e-1
+    delta = 1e-11
+    factor = 1.5  # differences for 0 are 2.8e+00 and 1.2e-04
+    abc = 1.0, -1 + factor * delta, -1 + delta
+
     if abc:
         t = Tetartoid(*abc)
         t.save_json()
