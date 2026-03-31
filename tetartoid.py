@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from enum import IntEnum, auto
 import json
 import logging
@@ -81,6 +82,7 @@ class Tetartoid():
     # Increased compared to numpy for tetrahedron
     rtol = 1e-4
     atol = 1e-8
+    related = None
 
     def __init__(self, a, b, c, name="A4"):
         """
@@ -165,6 +167,14 @@ class Tetartoid():
         Note that for edges with a length that is almost 0 the angles doesn't say so much.
         """
         return get_edge_angles(self.face)
+
+    def set_related(self, relation: Callable[[int, int, int], bool]) -> None:
+        """Set a function to check whether another tetartoid is related by using a, b, c.
+
+        relation: a function accepting values for a, b, and c. The function should return True if it
+            is related.
+        """
+        self.related = relation
 
     def diff(self, t_cmp: "Tetartoid", simple: bool = True) -> list[float]:
         """Compare self with another tetartoid.
@@ -551,8 +561,12 @@ if __name__ == "__main__":
         candidates = {}
         for t in set_of_tetartoids.values():
             if tetartoid == t:
-                result = t
                 candidates[t.name] = t
+            else:
+                # if a relation is defined check it:
+                if t.related:
+                    if t.related(*tetartoid.abc):
+                        candidates[t.name] = t
         if len(candidates) == 1:
             for t_d in candidates.values():
                 return t_d
@@ -641,8 +655,10 @@ if __name__ == "__main__":
         # angle: TWO_EQ_PAIRS
         # A whole series for which a=1, 0 < b=c < 1
         # TODO: need a way to check which one we found
+        # FIXME: perhaps add a function accepting a, b, c -> boolean
         "extended_cube": {
             "abc": (1, 0.8, 0.8),
+            "related": lambda a, b, c: np.isclose(a, 1) and np.isclose(b, c) and 0 < b < 1,
         },
         # edge: GENERAL
         # angle: TWO_EQ_PAIRS
@@ -860,9 +876,18 @@ if __name__ == "__main__":
     }
 
     def find_tetartoid(name):
+        """Find a pre-defined tetartoid in opt_setup
+
+        name: the name used in set_of_tetartoids
+
+        return: the Tetartoid object
+        """
         setup = opt_setup[name]
         if "abc" in setup:
-            return Tetartoid(*setup["abc"], name=name)
+            tetartoid = Tetartoid(*setup["abc"], name=name)
+            if "related" in setup:
+                tetartoid.set_related(setup["related"])
+            return tetartoid
         else:
             return TetartoidEqEdgeLengths(setup["start_with"], setup["optimize_for"], name=name)
 
@@ -896,7 +921,21 @@ if __name__ == "__main__":
         #"eq_edge_len": [3],
         "eq_angle": [(3, 4), (0, 1)],
     }
-    t = TetartoidEqEdgeLengths(start_with, optimize_for, name="test")
+    start_with = (1.6, -0.1, 1.5)
+    optimize_for = {
+        "opt_i": (0, 1),
+        # Method seems essential
+        "method": try_methods[1],
+        "eq_angle": [(3, 4), (0, 1)],
+    }
+    # Set if you want to test a, b, c directly
+    abc = ()
+    abc = 1.0, 0.1, 0.1
+    if abc:
+        t = Tetartoid(*abc)
+        t.save_json()
+    else:
+        t = TetartoidEqEdgeLengths(start_with, optimize_for, name="test")
     LOGGER.info("=================================")
     t1 = find_in_set(t)
 
@@ -910,22 +949,3 @@ if __name__ == "__main__":
         t1.log_properties()
         LOGGER.info("===============NEW===============")
         t.log_properties()
-
-    # Check directly
-    name = ""
-    name = "four_tetras"
-    if name:
-        t = find_tetartoid(name)
-    else:
-        a, b, c = 0.9, 1, 1.1
-        t = Tetartoid(a, b, c)
-    #t.unify()
-    #t.log_properties()
-    #print(t.face)
-    #t.save_json("checking.json")
-
-    # a, b, c = 1, 1, 1+1e-10
-    # t = Tetartoid(a, b, c)
-    # t.log_properties()
-    # t.save_json()
-
