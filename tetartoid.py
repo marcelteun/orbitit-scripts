@@ -55,12 +55,15 @@ def get_edges(face):
     ]
 
 
-def get_edge_lengths(edges):
-    return np.linalg.norm(edges, axis=1)
+def get_edge_lengths(edges) -> list[float]:
+    return np.linalg.norm(edges, axis=1).tolist()
 
 
-def get_edge_angles(face):
-    """Return angles between sides in a face in radians."""
+def get_edge_angles(face) -> list[float]:
+    """Return angles between sides in a face in radians.
+
+    Note that for edges with a length that is almost 0 the angles doesn't say so much.
+    """
     edges = get_edges(face)
     edge_lengths = get_edge_lengths(edges)
     no_of_vs = len(edges)
@@ -157,15 +160,41 @@ class Tetartoid():
 
     @property
     def angles(self):
-        """Calculate the angles (in radians) between sides sharing a vertex."""
+        """Calculate the angles (in radians) between sides sharing a vertex.
+
+        Note that for edges with a length that is almost 0 the angles doesn't say so much.
+        """
         return get_edge_angles(self.face)
 
-    def __eq__(self, t):
+    def diff(self, t_cmp: "Tetartoid", simple: bool = True) -> list[float]:
+        """Compare self with another tetartoid.
+
+        t_cmp: the tetartoid obj to compare with.
+        simple: if True then only a, b, and c are compared, otherwise, edge lengths and angles will
+        be added as well.
+
+        return: a list of floats with absolute differences.
+        """
+        if simple:
+            return np.abs(np.array(self.abc) - t_cmp.abc)
+        return np.abs(
+            # Optionally one could check the angles as well, but
+            # note that for edge lengths close to 0 the angles don't matter
+            # if edge 'i' is close to 0, i.e from vertex 'i' to 'i+1'
+            # then you should ignore the angles 'i' and 'i+1'
+            np.array(
+                list(self.abc) + self.edge_lengths
+            ) - np.array(
+                list(t_cmp.abc) + t_cmp.edge_lengths
+            )
+        )
+
+    def __eq__(self, t_cmp: "Tetartoid") -> bool:
         """Check whether two tetartoids are more or less the same.
 
         One can use self.atol and self.rtol, see numpy.isclose
         """
-        return np.allclose(self.abc, t.abc, self.rtol, self.atol)
+        return np.allclose(self.abc, t_cmp.abc, self.rtol, self.atol)
 
     def unify(self):
         """Scale a, b, c, so that a == 1 to get unique form
@@ -281,7 +310,7 @@ class Tetartoid():
             case _:
                 LOGGER.warning("Edge lengths: %s", edge_lengths)
                 LOGGER.warning("Angles (rad): %s", angles)
-                t.save_json(filename="unknown.json")
+                self.save_json(filename="unknown.json")
                 raise ValueError("Undefined angle category")
 
         return edge_cat, angle_cat, angle_spec
@@ -315,7 +344,7 @@ class Tetartoid():
                 )
             case EdgeCat.E0_EQ_E3_4:
                 LOGGER.info("There are two different edge lengths")
-                LOGGER.info("Edge lengths 1, 2 are %0.10f", edge_lengths[0])
+                LOGGER.info("Edge lengths 1, 2 are %0.10f", edge_lengths[1])
                 LOGGER.info("Edge lengths 0, 3, 4 are %0.10f", edge_lengths[3])
                 LOGGER.info(
                     "difference for 0 is %0.1e",
@@ -349,6 +378,8 @@ class Tetartoid():
             case _:
                 raise ValueError("Unhandled edge category")
 
+        if np.any(np.isclose(edge_lengths, 0)):
+            LOGGER.info("Note that some edge lengths are (almost) 0 and angle might not make sense")
         for equals in cat[2]:
             if len(equals) == 2:
                 LOGGER.info(
@@ -517,22 +548,20 @@ if __name__ == "__main__":
 
     def find_in_set(tetartoid):
         tetartoid.unify()
-        result = None
-        optional = {}
+        candidates = {}
         for t in set_of_tetartoids.values():
-            print(t.name)
             if tetartoid == t:
                 result = t
-                optional[t.name] = {
-                    "obj": t,
-                    "delta": np.sum(np.abs(np.array(t.abc) - tetartoid.abc))
-                }
-        if len(optional) > 1:
-            #breakpoint()
-            # FIXME: use the best representative: check t.angles and t.edges?
-            pass
-        for t_d in optional.values():
-            result = t_d["obj"]
+                candidates[t.name] = t
+        if len(candidates) == 1:
+            for t_d in candidates.values():
+                return t_d
+        diffs = [
+            np.sum(tetartoid.diff(t_d, simple=False))
+            for t_d in candidates.values()
+        ]
+        objs = np.array(list(candidates.values()))
+        result = objs[np.array(diffs).argmin()]
         return result
 
     #t = TetartoidOneReq(a=1, b=1.1)
@@ -622,8 +651,12 @@ if __name__ == "__main__":
             # abc = 1, 1, lim x↑1 x
             "abc": (1, 1, 1 - 1e-10)
             # same result for
-            # abc = 1, lim x↓1 x, 1
-            # "abc": (1, 1 + 1e-10, 1)
+            # abc = 1, 1, lim x↓1 x
+            # "abc": (1, 1, 1 + 1e-10)
+        },
+        "almost_tetrahedron_0_alt": {
+            # abc = 1, 1, lim x↓1 x
+            "abc": (1, 1, 1 + 1e-10)
         },
         # edge: E0_EQ_E3_4
         # angle: ONE_EQ_PAIR
@@ -632,8 +665,12 @@ if __name__ == "__main__":
             # abc = 1, 1, lim x↑1 x
             "abc": (1, 1 - 1e-10, 1)
             # same result for
-            # abc = 1, 1, lim x↓1 x
-            # "abc": (1, 1, 1 + 1e-10)
+            # abc = 1, lim x↓1 x, 1
+            # "abc": (1, 1 + 1e-10, 1)
+        },
+        "almost_tetrahedron_1_alt": {
+            # abc = 1, lim x↓1 x, 1
+            "abc": (1, 1 + 1e-10, 1)
         },
         # edge: E0_EQ_E3_4 (δ = 1.7e-5)
         # angle: ONE_EQ_PAIR (δ = 9.9e-5)
@@ -853,10 +890,6 @@ if __name__ == "__main__":
     start_with = (1.0, 1., .9)
     # Trying to improve four tetra0.999978909650798, 0.999985939824643s, tried method didn't helt
     # tried eq_edge_len = 2 and eq_angle (3, 4) no go
-    # FIXME fix finding predefined solution
-    # This should be caught as similar to almost_tetrahedron_0
-    # But it is caught as almost_cube now
-    # Perhaps we should go through all possiblities, not break and keep the smallest one.
     optimize_for = {
         "opt_i": (1, 2),
         "method": try_methods[1],
