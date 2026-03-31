@@ -567,6 +567,8 @@ if __name__ == "__main__":
                 if t.related:
                     if t.related(*tetartoid.abc):
                         candidates[t.name] = t
+        if len(candidates) == 0:
+            return None
         if len(candidates) == 1:
             for t_d in candidates.values():
                 return t_d
@@ -930,7 +932,7 @@ if __name__ == "__main__":
     }
     # Set if you want to test a, b, c directly
     abc = ()
-    abc = 1.0, 0.1, 0.1
+    abc = 1.0, 1.1, 1.1
     if abc:
         t = Tetartoid(*abc)
         t.save_json()
