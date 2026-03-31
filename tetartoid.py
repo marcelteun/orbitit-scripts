@@ -60,6 +60,7 @@ def get_edge_lengths(edges):
 
 
 def get_edge_angles(face):
+    """Return angles between sides in a face in radians."""
     edges = get_edges(face)
     edge_lengths = get_edge_lengths(edges)
     no_of_vs = len(edges)
@@ -74,7 +75,8 @@ def get_edge_angles(face):
 
 
 class Tetartoid():
-    rtol = 1e-5
+    # Increased compared to numpy for tetrahedron
+    rtol = 1e-4
     atol = 1e-8
 
     def __init__(self, a, b, c, name="A4"):
@@ -143,6 +145,21 @@ class Tetartoid():
         e2 = self.n / self.d2
         return tetar_face(self.a, self.b, self.c, e1, e2)
 
+    @property
+    def edges(self):
+        """Calculate edges vectors."""
+        return get_edges(self.face)
+
+    @property
+    def edge_lengths(self):
+        """Calculate the length of the edges vectors."""
+        return get_edge_lengths(self.edges)
+
+    @property
+    def angles(self):
+        """Calculate the angles (in radians) between sides sharing a vertex."""
+        return get_edge_angles(self.face)
+
     def __eq__(self, t):
         """Check whether two tetartoids are more or less the same.
 
@@ -197,8 +214,7 @@ class Tetartoid():
             - then the angle category
 
         """
-        edges = get_edges(self.face)
-        edge_lengths = get_edge_lengths(edges)
+        edge_lengths = self.edge_lengths
         if np.isclose(edge_lengths[0], edge_lengths[1]):
             if np.isclose(edge_lengths[0], edge_lengths[3]):
                 edge_cat = EdgeCat.ALL_EQ
@@ -211,7 +227,7 @@ class Tetartoid():
         else:
             edge_cat = EdgeCat.GENERAL
 
-        angles = get_edge_angles(self.face)
+        angles = self.angles
         eq_pairs = []
         for i, angle in enumerate(angles):
             for j in range(i + 1, len(angles)):
@@ -276,9 +292,8 @@ class Tetartoid():
 
     def log_properties(self):
         cat = self.category
-        edges = get_edges(self.face)
-        edge_lengths = get_edge_lengths(edges)
-        angles = get_edge_angles(self.face)
+        edge_lengths = self.edge_lengths
+        angles = np.rad2deg(self.angles)
         title = f"Tetartoid '{self.name}'"
         line = "-" * len(title)
         LOGGER.info(line)
@@ -340,7 +355,7 @@ class Tetartoid():
                     "Angle no. %i close to %i with difference of %0.1e°",
                     equals[0],
                     equals[1],
-                    np.rad2deg(np.abs(angles[equals[0]] - angles[equals[1]])),
+                    np.abs(angles[equals[0]] - angles[equals[1]]),
                 )
             elif len(equals) == 3:
                 LOGGER.info(
@@ -349,8 +364,8 @@ class Tetartoid():
                     equals[0],
                     equals[1],
                     equals[2],
-                    np.rad2deg(np.abs(angles[equals[0]] - angles[equals[1]])),
-                    np.rad2deg(np.abs(angles[equals[0]] - angles[equals[2]])),
+                    np.abs(angles[equals[0]] - angles[equals[1]]),
+                    np.abs(angles[equals[0]] - angles[equals[2]]),
                 )
             elif len(equals) == 4:
                 LOGGER.info(
@@ -360,15 +375,15 @@ class Tetartoid():
                     equals[1],
                     equals[2],
                     equals[3],
-                    np.rad2deg(np.abs(angles[equals[0]] - angles[equals[1]])),
-                    np.rad2deg(np.abs(angles[equals[0]] - angles[equals[2]])),
-                    np.rad2deg(np.abs(angles[equals[0]] - angles[equals[3]])),
+                    np.abs(angles[equals[0]] - angles[equals[1]]),
+                    np.abs(angles[equals[0]] - angles[equals[2]]),
+                    np.abs(angles[equals[0]] - angles[equals[3]]),
                 )
             else:
-                breakpoint()
+                #breakpoint()
                 assert False, "Programming error handling three eq_pairs (quartet?)"
         for i, angle in enumerate(angles):
-            LOGGER.info("Angle at vertex no. %d is %0.10f°", i, np.rad2deg(angle))
+            LOGGER.info("Angle at vertex no. %d is %0.10f°", i, angle)
 
 
 class TetartoidEqEdgeLengths(Tetartoid):
@@ -503,10 +518,21 @@ if __name__ == "__main__":
     def find_in_set(tetartoid):
         tetartoid.unify()
         result = None
+        optional = {}
         for t in set_of_tetartoids.values():
+            print(t.name)
             if tetartoid == t:
                 result = t
-                break
+                optional[t.name] = {
+                    "obj": t,
+                    "delta": np.sum(np.abs(np.array(t.abc) - tetartoid.abc))
+                }
+        if len(optional) > 1:
+            #breakpoint()
+            # FIXME: use the best representative: check t.angles and t.edges?
+            pass
+        for t_d in optional.values():
+            result = t_d["obj"]
         return result
 
     #t = TetartoidOneReq(a=1, b=1.1)
@@ -563,8 +589,17 @@ if __name__ == "__main__":
         },
         # edge: E1_2_EQ_E3_4
         # angle: EQ_QUARTET
+        # each side consists of two rectangles
         "cube": {
             "abc": (0, 1, 1),
+        },
+        # edge: GENERAL
+        # angle: ONE_EQ_PAIR
+        # each side consists of two triangles
+        "almost_cube": {
+            "abc": (1 - 1e-10, 1, 1),
+            # Same result for
+            # "abc": (1 + 1e-10, 1, 1),
         },
         # edge: E1_2_EQ_E3_4
         # angle: EQ_PAIR_AND_TRIPLE
@@ -581,15 +616,33 @@ if __name__ == "__main__":
             "abc": (1, 0.8, 0.8),
         },
         # edge: GENERAL
-        # angle: ONE_EQ_PAIR
-        "almost_tetrahedron": {
-            # should be 1, 1, lim x->1 x
+        # angle: TWO_EQ_PAIRS
+        # each side is covered 3 times
+        "almost_tetrahedron_0": {
+            # abc = 1, 1, lim x↑1 x
             "abc": (1, 1, 1 - 1e-10)
+            # same result for
+            # abc = 1, lim x↓1 x, 1
+            # "abc": (1, 1 + 1e-10, 1)
         },
+        # edge: E0_EQ_E3_4
+        # angle: ONE_EQ_PAIR
+        # Each side consists of triangles meeting in the side centre
+        "almost_tetrahedron_1": {
+            # abc = 1, 1, lim x↑1 x
+            "abc": (1, 1 - 1e-10, 1)
+            # same result for
+            # abc = 1, 1, lim x↓1 x
+            # "abc": (1, 1, 1 + 1e-10)
+        },
+        # edge: E0_EQ_E3_4 (δ = 1.7e-5)
+        # angle: ONE_EQ_PAIR (δ = 9.9e-5)
         "four_tetras": {
+            # "abc": (1, 0.999978909650798, 0.999985939824643),
             "start_with": (1.6, -0.1, 1.5),
             "optimize_for": {
                 "opt_i": (0, 1),
+                # Method seems essential
                 "method": try_methods[1],
                 "eq_angle": [(3, 4), (0, 1)],
             },
@@ -778,9 +831,11 @@ if __name__ == "__main__":
 
     for name in opt_setup.keys():
         t = find_tetartoid(name)
-        if find_in_set(t) is None:
-            add_to_set(t)
-            t.save_json()
+        # always add, don't check:
+        # if find_in_set(t) is None:
+        # since some abc are very close but with very different results
+        add_to_set(t)
+        t.save_json()
 
     for t in set_of_tetartoids.values():
         t.log_properties()
@@ -795,13 +850,18 @@ if __name__ == "__main__":
     start_with = (1, 2.3, 1.3)
     start_with = (1, 3.0, 2.7)
     start_with = (1.1, 0., 2.0)
-    start_with = (1, 0.99, 0.99)
-    #start_with = (1., 1.5, 1.5)
+    start_with = (1.0, 1., .9)
+    # Trying to improve four tetra0.999978909650798, 0.999985939824643s, tried method didn't helt
+    # tried eq_edge_len = 2 and eq_angle (3, 4) no go
+    # FIXME fix finding predefined solution
+    # This should be caught as similar to almost_tetrahedron_0
+    # But it is caught as almost_cube now
+    # Perhaps we should go through all possiblities, not break and keep the smallest one.
     optimize_for = {
         "opt_i": (1, 2),
-        #"method": try_methods[1],
-        "eq_edge_len": [3],
-        #"eq_angle": [(3, 4), ],
+        "method": try_methods[1],
+        #"eq_edge_len": [3],
+        "eq_angle": [(3, 4), (0, 1)],
     }
     t = TetartoidEqEdgeLengths(start_with, optimize_for, name="test")
     LOGGER.info("=================================")
@@ -831,7 +891,7 @@ if __name__ == "__main__":
     #print(t.face)
     #t.save_json("checking.json")
 
-    # a, b, c = 1, 1, 3
+    # a, b, c = 1, 1, 1+1e-10
     # t = Tetartoid(a, b, c)
     # t.log_properties()
     # t.save_json()
