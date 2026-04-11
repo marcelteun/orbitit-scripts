@@ -2,6 +2,7 @@ from collections.abc import Callable
 from enum import IntEnum, auto
 import json
 import logging
+from pathlib import Path
 
 import numpy as np
 from scipy.optimize import minimize
@@ -91,28 +92,22 @@ class Tetartoid():
         """
         name: will be used as Shape name
         """
-        #assert a <= b <= c
+        # Original requirement: will only allow for convex tetartoids
+        # assert a <= b <= c
         self.a = a
         self.b = b
         self.c = c
         self.name = name
 
         self.shape_props = {
-            "class": "orbit_shape",
+            "class": "orbit_shape_v2",
             "data": {
-                "cols": [
-                    [64, 104, 224],
-                    [64, 104, 224],
-                    [153, 204, 49],
-                    [153, 204, 49],
-                    [220, 159, 220],
-                    [220, 159, 220],
-                    [254, 214, 0],
-                    [254, 214, 0],
-                    [153, 204, 49],
-                    [64, 104, 224],
-                    [220, 159, 220],
-                ],
+                "version": 2,
+                "name": name if name else "A4",
+                "base": {
+                    # vs is added in the code below
+                    "fs": [[0, 1, 2, 3, 4]],
+                },
                 "final_sym": {
                     "class": "A4",
                     "data": {
@@ -122,10 +117,16 @@ class Tetartoid():
                         }
                     },
                 },
-                "fs": [[0, 1, 2, 3, 4]],
-                "name": name if name else "A4",
-                "no_of_cols": 12,
                 "stab_sym": {"class": "E", "data": {}},
+                "cols": [
+                    [64, 104, 224],
+                    [153, 204, 49],
+                    [220, 159, 220],
+                    [254, 214, 0],
+                ],
+                "no_of_cols": 4,
+                "col_sym": "C3",
+                "col_alt": 2,  # note 0 based
             }
         }
         assert self.n * self.d1 * self.d2 != 0
@@ -231,7 +232,7 @@ class Tetartoid():
         self.shape_props["data"]["name"] = self.name
         if not filename:
             filename = self.name + ".json"
-        self.shape_props["data"]["vs"] = vertices
+        self.shape_props["data"]["base"]["vs"] = vertices
         with open(filename, "w") as fd:
             json.dump(self.shape_props, fd)
         LOGGER.info("saved %s", filename)
@@ -551,6 +552,180 @@ class TetartoidEqEdgeLengths(Tetartoid):
         return result.x
 
 
+def generate_uniform(outdir: Path):
+    """Generate tetartoids with faces or sides that give rise to uniform polyhedra.
+
+    Included are polyhedra where a side, e.g. a square, consists of several other faces, e.g.
+    two rectangles.
+
+    outdir: path to directotry where to save the JSON files.
+    """
+    τ = (np.sqrt(5) + 1) / 2
+    τ1 = τ + 1
+    tetartoids = {
+        # "cube": (0, 1, 1),
+        # Use the following instead to get the same file as the cube below
+        "cube": (0, τ1, τ1),
+        "cubic": (1, 1.5, 1.5),
+        "tetrahedron": (1, 1, 3),
+        "regular_dodecahedron": (0, τ1, τ1**2),
+        "great_stellated_dodecahedron": (0, τ1, 1),
+    }
+    for name, abc in tetartoids.items():
+        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+
+
+def generate_pyritohedra(outdir: Path):
+    """Generate tetartoids with faces that have bilateral symmetry.
+
+    These all become pyritohedra, which have more symmetry: S4xI.
+
+    Though I am not sure whether there are more of these.
+    I.e. are there more tetartoids with faces with bilateral symmetry that aren't pyritohedra?
+    Or are there more tetartoids that are pyritohedra?
+
+    outdir: path to directotry where to save the JSON files.
+    """
+    τ = (np.sqrt(5) + 1) / 2
+    τ1 = τ + 1
+    δ = [1e-3, 1e-2]
+    big = 4000
+    tetartoids = {
+        "rhombic_dodecahedron": (0, τ1, big),
+        "pyritohedron_slim_pentagons": (0, τ1, τ1**2 + 5),
+        "regular_dodecahedron": (0, τ1, τ1**2),
+        "pyritohedron_wide_pentagons": (0, τ1, 2 * τ + 1),
+        "cube": (0, τ1, τ1),
+        "pyritohedron_concave_obtuse": (0, τ1, τ + 1 / 2),
+        "endododecahedron": (0, τ1, τ),
+        "pyritohedron_concave_sharp": (0, τ1, τ - 1 / 5),
+        "d0_by_abc_021_00x": (0, τ1, τ1 / 2 + 2 * δ[0]),
+        "pyritohedron_pentagrams_short_single_top": (0, τ1, 10 / 9),
+        "great_stellated_dodecahedron": (0, τ1, 1),
+        "pyritohedron_pentagrams_long_single_top": (0, τ1, τ - 1),
+        "d0_by_abc_10-1_x00": (0, τ1, δ[1]),  # three crossing lines
+    }
+    for name, abc in tetartoids.items():
+        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+
+# TODO: include all singularities here and rename
+def generate_at_singularities(key: str, outdir: Path):
+    """Generate the cases close to when d1 and / or d2 become equal to 0.
+
+    These are singularities
+
+    The files use the following structure for the naming:
+        d0_by_{abc}_{vals}_{deviations}
+        - d0 means that this is a singularity where 'd' becomes equal to 0
+        - {abc}_{vals}: for one singulariry there are several cases. This part describes the value
+                for a, b and/or c. The first part states which of these are specified. The second
+                part specifies the values.
+        - {deviation}: since for those values a singularity occurs you cannot really use those
+                values. Instead one or more use a diff. The following characters are used:
+                    * 0: no deviation, the value from {vals} is used.
+                    * n: some positive number is subtracted from the value in vals to show how the
+                        tetartoid looks like from that side of the singular point
+                    * p: some positive number is added to the value in vals to show how the
+                        tetartoid looks like from that side of the singular point
+                    * x: a tiny number either added of subtracted, to show what is obtained "at the"
+                        singular point". If a difference in sign for x would lead to two different
+                        cases, then instead '+' or '-' is used.
+                    * +: a tiny number is added to show what is obtained "at the" singular point.
+                    * -: a tiny number is subtracted to show what is obtained "at the" singular
+                        point.
+
+    key: possible values are:
+        "a=b=c",
+        "a=b=0",
+        "b=0 and c=-a",
+        "b=0 and c=a"
+    outdir: path to directotry where to save the JSON files.
+    """
+    ξ = [1e-4, 1e-3, 5e-3, 1e-5]
+    δ = [2e-2, 4e-2, 1e-1, 2e-1, 3e-1]
+    tetartoids = {
+        # singularities when n = 0:
+        "a=b=c": {
+            "n0_by_abc_111_n00": (1 - δ[2], 1, 1),
+            "n0_by_abc_111_x00": (1 - ξ[0], 1, 1),
+            "n0_by_abc_111_p00": (1 + δ[2], 1, 1),
+            "n0_by_abc_111_0n0": (1, 1 - δ[2], 1),
+            "n0_by_abc_111_0x0": (1, 1 - ξ[3], 1),
+            "n0_by_abc_111_0p0": (1, 1 + δ[2], 1),
+            "n0_by_abc_111_00n": (1, 1, 1 - δ[2]),
+            "n0_by_abc_111_00x": (1, 1, 1 - ξ[0]),
+            "n0_by_abc_111_00p": (1, 1, 1 + δ[2]),
+            "n0_by_abc_111_np0": (1 - δ[2], 1 + δ[2], 1),
+            "n0_by_abc_111_-+0": (1 - ξ[0], 1 + ξ[0], 1),
+            "n0_by_abc_111_pn0": (1 + δ[2], 1 - δ[2], 1),
+            "n0_by_abc_111_n0p": (1 - δ[2], 1, 1 + δ[2]),
+            "n0_by_abc_111_-0+": (1 - ξ[0], 1, 1 + ξ[0]),
+            "n0_by_abc_111_p0n": (1 + δ[2], 1, 1 - δ[2]),
+            "n0_by_abc_111_0np": (1, 1 - δ[2], 1 + δ[2]),
+            "n0_by_abc_111_0-+": (1, 1 - ξ[0], 1 + ξ[0]),
+            "n0_by_abc_111_0pn": (1, 1 + δ[2], 1 - δ[2]),
+        },
+        "bc/aa=1": {
+            "n0_by_abc_1xx-1_0n0": (1, 5 / 4 - δ[2], 4 / 5),
+            "n0_by_abc_1xx-1_0x0": (1, 5 / 4 - ξ[0], 4 / 5),
+            "n0_by_abc_1xx-1_0p0": (1, 5 / 4 + δ[2], 4 / 5),
+            "n0_by_abc_1x-1x_0n0": (1, 4 / 5 - δ[0], 5 / 4),
+            "n0_by_abc_1x-1x_0x0": (1, 4 / 5 - ξ[0], 5 / 4),
+            "n0_by_abc_1x-1x_0p0": (1, 4 / 5 + δ[0], 5 / 4),
+            "n0_by_abc_1xx-1_00p": (1, 4 / 5, 5 / 4 + 0.16),
+        },
+        # singularities when d = 0:
+        "a=b=0": {
+            "d0_by_ab_00_n0": (-δ[0], 0, 1),
+            "d0_by_ab_00_x0": (ξ[1], 0, 1),
+            "d0_by_ab_00_p0": (δ[0], 0, 1),
+            "d0_by_ab_00_0n": (0, -δ[1], 1),
+            "d0_by_ab_00_0x": (0, ξ[1], 1),
+            "d0_by_ab_00_0p": (0, δ[1], 1),
+            "d0_by_ab_00_nn": (-δ[1], -δ[1], 1),
+            "d0_by_ab_00_--": (-ξ[1], -ξ[1], 1),
+            "d0_by_ab_00_pp": (δ[1], δ[1], 1),
+            "d0_by_ab_00_np": (-δ[1], δ[1], 1),
+            "d0_by_ab_00_-+": (-ξ[1], ξ[1], 1),
+            "d0_by_ab_00_pn": (δ[1], -δ[1], 1),
+            # "d0_by_ab_00_+-": (ξ[1], -ξ[1], 1), same as -+
+            # "d0_by_ab_00_++": (ξ[1], ξ[1], 1), same as ++
+        },
+        "b=0 and c=-a": {
+            "d0_by_abc_10-1_n00": (1 - δ[2], 0, -1),
+            "d0_by_abc_10-1_x00": (1 - ξ[2], 0, -1),
+            "d0_by_abc_10-1_p00": (1 + δ[2], 0, -1),
+            "d0_by_abc_10-1_0n0": (1, 0 - δ[2], -1),
+            "d0_by_abc_10-1_0x0": (1, 0 + ξ[2], -1),
+            "d0_by_abc_10-1_0p0": (1, 0 + δ[2], -1),
+            "d0_by_abc_10-1_00n": (1, 0, -1 - δ[2]),
+            "d0_by_abc_10-1_00x": (1, 0, -1 + ξ[2]),
+            "d0_by_abc_10-1_00p": (1, 0, -1 + δ[2]),
+        },
+        "b=0 and c=a": {
+            "d0_by_abc_101_0n0": (1, 0 - δ[2], -1),
+            "d0_by_abc_101_0x0": (1, 0 - ξ[2], -1),
+            "d0_by_abc_101_0p0": (1, 0 - δ[2], -1),
+        },
+        "b≠0 and c=f1×b": {
+            # choose a = 1 and b = 4/5 to be similar to bc/aa=1
+            # Now here fa = 4/5 and f1 = 7/4, and c = 7/5
+            # Now scale to b = 1
+            "d1_0_by_abc_fabf1_00n": (5 / 4, 1, 7 / 4 - δ[1]),
+            "d1_0_by_abc_fabf1_00x": (5 / 4, 1, 7 / 4 - ξ[2]),
+            "d1_0_by_abc_fabf1_00p": (5 / 4, 1, 7 / 4 + δ[1]),
+        },
+        "b≠0 and c=f2×b": {
+            # Take b = 1, fa = 0.5, then f2 = 7/10
+            "d2_0_by_abc_fabf2_00n": (1 / 2, 1, 7 / 10 - δ[0]),
+            "d2_0_by_abc_fabf2_00x": (1 / 2, 1, 7 / 10 + ξ[1]),
+            "d2_0_by_abc_fabf2_00p": (1 / 2, 1, 7 / 10 + δ[0]),
+        },
+    }[key]
+    for name, abc in tetartoids.items():
+        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+
+
 if __name__ == "__main__":
     set_of_tetartoids = {
     }
@@ -620,20 +795,30 @@ if __name__ == "__main__":
     tau = (np.sqrt(5) + 1) / 2
     try_methods = ("Powell", "Nelder-Mead", "COBYQA", "BFGS", "SLSQP")
     opt_setup = {
+        # ######################################################
+        # Regular shaped
+        # ######################################################
         # edge: ALL_EQ
         # angle: ALL_EQ
         "regular_dodecahedron": {
             "abc": (0, 1, tau + 1),
         },
         # edge: ALL_EQ
-        # angle: EQ_PAIR_AND_TRIPLE
-        "extended_regular_dodecahedron": {
-            "abc": (0, 1, -tau),
+        # angle: ALL_EQ
+        "great_stellated_dodecahedron": {
+            "abc": (0, tau + 1, 1),
         },
         # edge: ALL_EQ
         # angle: TWO_EQ_PAIRS
         "tetrahedron": {
             "abc": (1, 1, 3),
+        },
+        # edge: GENERAL
+        # angle: ONE_EQ_PAIR
+        # each side consists of two right trapezoids
+        "cubic": {
+            "abc": (1, 1.5, 1.5),
+            "related": lambda a, b, c: np.isclose(a, 1) and np.isclose(b, c) and (b > 1 or b < -1),
         },
         # edge: E1_2_EQ_E3_4
         # angle: EQ_QUARTET
@@ -642,6 +827,9 @@ if __name__ == "__main__":
             "abc": (0, 1, 1),
             "related": lambda a, b, c: np.isclose(a, 1) and np.isclose(b, c) and b > 100,
         },
+        # ######################################################
+        # On the limit
+        # ######################################################
         # edge: GENERAL
         # angle: ONE_EQ_PAIR
         # each side consists of two triangles
@@ -650,26 +838,13 @@ if __name__ == "__main__":
             # Same result for
             # "abc": (1 + 1e-10, 1, 1),
         },
-        # edge: GENERAL
-        # angle: ONE_EQ_PAIR
-        # each side consists of two right trapezoids
-        "cubic": {
-            "abc": (1, 1.2, 1.2),
-            "related": lambda a, b, c: np.isclose(a, 1) and np.isclose(b, c) and (b > 1 or b < -1),
-        },
-        # edge: GENERAL
-        # angle: TWO_EQ_PAIRS
-        # A whole series for which a=1, 0 < b=c < 1
-        "extended_cube": {
-            "abc": (1, 0.8, 0.8),
-            "related": lambda a, b, c: np.isclose(a, 1) and np.isclose(b, c) and -1 < b < 1,
-        },
         # edge: E1_2_EQ_E3_4
         # angle: EQ_PAIR_AND_TRIPLE
         # should be 1, lim x->0: x, x
         "3_crossing_lines": {
             # degenerate
             "abc": (1, 1e-14, 1e-14),
+            # TODO: b can have any value
         },
         # edge: GENERAL
         # angle: TWO_EQ_PAIRS
@@ -701,7 +876,7 @@ if __name__ == "__main__":
         },
         # edge: E0_EQ_E3_4 (δ = 2.7e-11)
         # angle: ONE_EQ_PAIR (δ = 4.5e-10)
-        # Four tetrahedra on one tetrahedron
+        # irregular tetraaugmented tetrahedron
         "four_tetras": {
             "abc": (1, 1 - 1.5e-11, 1 - 1e-11),
             "related": lambda a, b, c: np.isclose(a, 1) and \
@@ -716,6 +891,22 @@ if __name__ == "__main__":
             "related": lambda a, b, c: np.isclose(a, 1) and \
                 np.isclose((1 + b) / (1 + c), 1.5) and \
                 np.isclose(b, -1),
+        },
+
+        # ######################################################
+        # Other
+        # ######################################################
+        # edge: ALL_EQ
+        # angle: EQ_PAIR_AND_TRIPLE
+        "extended_regular_dodecahedron": {
+            "abc": (0, 1, -tau),
+        },
+        # edge: GENERAL
+        # angle: TWO_EQ_PAIRS
+        # A whole series for which a=1, 0 < b=c < 1
+        "extended_cube": {
+            "abc": (1, 0.8, 0.8),
+            "related": lambda a, b, c: np.isclose(a, 1) and np.isclose(b, c) and -1 < b < 1,
         },
         "pentaspikes": {
             "start_with": (0.4, 0.8, 2.0),
@@ -941,25 +1132,76 @@ if __name__ == "__main__":
     # extended tetrahedron: abc = 1.0, 1-2e-11, 1-1e-1
     # delta = -1e-1
     # delta = 1e-1
-    delta = 1e-11
+    delta = 2e-1
     factor = 1.5  # differences for 0 are 2.8e+00 and 1.2e-04
     abc = 1.0, -1 + factor * delta, -1 + delta
 
-    if abc:
-        t = Tetartoid(*abc)
-        t.save_json()
-    else:
-        t = TetartoidEqEdgeLengths(start_with, optimize_for, name="test")
-    LOGGER.info("=================================")
-    t1 = find_in_set(t)
+    # Investigate approaching limits (e.g. d1 = 0)
+    f_a = 3
+    f_c = (f_a**2 - f_a + 1) / (2 - f_a)
+    δ = -1e-1
+    #abc = f_a + δ, 1, f_c
+    #abc = f_a, 1 + δ, f_c
+    abc = f_a, 1, f_c + δ
 
-    if t1 is None:
-        LOGGER.info("*** New one found!")
-        t.log_properties()
-        t.save_json()
-    else:
-        LOGGER.info("*** Exists as %s", t1.name)
-        LOGGER.info("===============OLD===============")
-        t1.log_properties()
-        LOGGER.info("===============NEW===============")
-        t.log_properties()
+    # try out when the tetartoid is convex / concave
+    # I think requirement 1 is related to that.
+    # we have
+    # 1   3    2.7
+    # 1+ξ 1-ξ  1
+    # With a and b symmetrical: c < a or c < b?
+    # 1, 3, 3 is square with right trapezoids
+    # Tried: 1.65, 3, 2.2
+    # If you increase 'a' to 1.6 then the point between the tops gets
+    # so low that the face self-intersects.
+    #      => At least b < c < a or a < c < b though this isn't enough
+    # Lowering the value of 'a' will lower the top
+    # around abc = 0, 3, 2.2
+    # the tops are (sort of) equal
+    # around abc = 0.0, 3, 2.2
+    # flatter: abc = 0.0, 3, 2.5
+    # very spiky: abc = 0.0, 3, 1.6
+    # At 0, 3, 1.5 d1 = 0 -> singular point
+    # leads to almost Great stellated dodecahedron: find out when that is happening..
+    abc = 0, tau + 1, 1e-4
+
+    # TODO: make this an input parameter
+    # TODO: create dir if it doesn't exist
+    outdir = Path("/home/marceltn/self/fromGitHub/orbitit-scripts/out/tetartoids")
+
+    # TODO: generate depending on a command line parameter
+    #generate_pyritohedra(outdir)
+    #generate_uniform(outdir)
+
+    # d1 = 0
+    abc = -2e-2, 0, 1
+
+    # N = 0
+    # generate_at_singularities("a=b=c", outdir)
+    # generate_at_singularities("bc/aa=1", outdir)
+
+    # D = 0
+    # generate_at_singularities("a=b=0", outdir)
+    # generate_at_singularities("b=0 and c=-a", outdir)
+    # generate_at_singularities("b=0 and c=a", outdir)
+    # generate_at_singularities("b≠0 and c=f1×b", outdir)
+    generate_at_singularities("b≠0 and c=f2×b", outdir)
+
+    #if abc:
+    #    t = Tetartoid(*abc)
+    #    t.save_json()
+    #else:
+    #    t = TetartoidEqEdgeLengths(start_with, optimize_for, name="test")
+    #LOGGER.info("=================================")
+    #t1 = find_in_set(t)
+
+    #if t1 is None:
+    #    LOGGER.info("*** New one found!")
+    #    t.log_properties()
+    #    t.save_json()
+    #else:
+    #    LOGGER.info("*** Exists as %s", t1.name)
+    #    LOGGER.info("===============OLD===============")
+    #    t1.log_properties()
+    #    LOGGER.info("===============NEW===============")
+    #    t.log_properties()
