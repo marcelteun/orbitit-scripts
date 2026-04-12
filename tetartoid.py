@@ -115,6 +115,7 @@ def get_edge_angles(face) -> list[float]:
 
 
 class Tetartoid():
+    """A dodecahedron of pentagons with A4 symmetry."""
     # Increased compared to numpy for tetrahedron
     rtol = 1e-4
     atol = 1e-8
@@ -629,7 +630,7 @@ def generate_uniform(outdir: Path):
 def generate_pyritohedra(outdir: Path):
     """Generate tetartoids with faces that have bilateral symmetry.
 
-    These all become pyritohedra, which have more symmetry: S4xI.
+    These all become pyritohedra, which have more symmetry: A4xI.
 
     Though I am not sure whether there are more of these.
     I.e. are there more tetartoids with faces with bilateral symmetry that aren't pyritohedra?
@@ -838,12 +839,19 @@ NAMED_SET_MAP = {
     "b≠0 and c=f2×b": generate_at_singularity_case_d_5,
 }
 
-class TetartoidTypes:
 
+class SpecialTetartoids:
+    """Class for tetartoids with special properties.
+
+    Special properties occur e.g. when edges get the same length and / or angle between sides.
+    """
     tau = (np.sqrt(5) + 1) / 2
+    # The dictionary describes tetartoids for which angles and / or edge length become equal.
+    # Some of these occur while approaching a singularity
+    # TODO: use class attribute for the offset in the singularities.
     opt_setup = {
         # ######################################################
-        # Regular shaped
+        # Uniform
         # ######################################################
         # edge: ALL_EQ
         # angle: ALL_EQ
@@ -875,16 +883,47 @@ class TetartoidTypes:
             "related": lambda a, b, c: np.isclose(a, 1) and np.isclose(b, c) and b > 100,
         },
         # ######################################################
-        # On the limit
+        # Near singularity
         # ######################################################
+        # a=b=c
+        # TODO: add related keyword to all
+        # -----
         # edge: GENERAL
         # angle: ONE_EQ_PAIR
         # each side consists of two triangles
-        "almost_cube": {
+        "cube_from_triangles": {
             "abc": (1 - 1e-10, 1, 1),
-            # Same result for
-            # "abc": (1 + 1e-10, 1, 1),
         },
+        # edge: E0_EQ_E3_4
+        # angle: TWO_EQ_PAIRS
+        # each side is covered 3 times
+        "tretrahedron_x_3": {
+            "abc": (1, 1 - 1e-10, 1)
+        },
+        # edge: GENERAL
+        # angle: ONE_EQ_PAIR
+        # each side made of three triangles
+        "flat_faced_triakis_tetrahedron": {
+            "abc": (1, 1, 1 - 1e-10)
+        },
+        # edge: E0_EQ_E3_4
+        # angle: ONE_EQ_PAIR
+        # regular tetraaugmented tetrahedron
+        # TODO: add this to the web-site
+        "tetraaugmented_tetrahedron": {
+            "abc": (1, 1 - 1.5e-11, 1 - 1e-11),
+            "related": lambda a, b, c: np.isclose(a, 1) and \
+                np.isclose((1 - b) / (1 - c), 1.5) and \
+                np.isclose(b, 1),
+        },
+        # edge: GENERAL
+        # angle: ONE_EQ_PAIR
+        # each side made of three triangles
+        "triakis_tetrahedron": {
+            "abc": (1 + 1e-11, 1, 1 - 1e-11)
+        },
+        # -----------------------------------------------------------
+        # TODO CONTINUE HERE: make sure to save the JSON file
         # edge: E1_2_EQ_E3_4
         # angle: EQ_PAIR_AND_TRIPLE
         # should be 1, lim x->0: x, x
@@ -893,42 +932,15 @@ class TetartoidTypes:
             "abc": (1, 1e-14, 1e-14),
             # TODO: b can have any value
         },
-        # edge: GENERAL
-        # angle: TWO_EQ_PAIRS
-        # each side is covered 3 times
-        "almost_tetrahedron_0": {
-            # abc = 1, 1, lim x↑1 x
-            "abc": (1, 1, 1 - 1e-10)
-            # same result for
-            # abc = 1, 1, lim x↓1 x
-            # "abc": (1, 1, 1 + 1e-10)
-        },
-        "almost_tetrahedron_0_alt": {
-            # abc = 1, 1, lim x↓1 x
-            "abc": (1, 1, 1 + 1e-10)
-        },
         # edge: E0_EQ_E3_4
         # angle: ONE_EQ_PAIR
         # Each side consists of triangles meeting in the side centre
         "almost_tetrahedron_1": {
-            # abc = 1, 1, lim x↑1 x
             "abc": (1, 1 - 1e-10, 1)
-            # same result for
-            # abc = 1, lim x↓1 x, 1
-            # "abc": (1, 1 + 1e-10, 1)
         },
         "almost_tetrahedron_1_alt": {
             # abc = 1, lim x↓1 x, 1
             "abc": (1, 1 + 1e-10, 1)
-        },
-        # edge: E0_EQ_E3_4 (δ = 2.7e-11)
-        # angle: ONE_EQ_PAIR (δ = 4.5e-10)
-        # irregular tetraaugmented tetrahedron
-        "four_tetras": {
-            "abc": (1, 1 - 1.5e-11, 1 - 1e-11),
-            "related": lambda a, b, c: np.isclose(a, 1) and \
-                np.isclose((1 - b) / (1 - c), 1.5) and \
-                np.isclose(b, 1),
         },
         # edge: E0_EQ_E1_2 (δ = 2.7e-11)
         # angle: ONE_EQ_PAIR (δ = 4.5e-10)
@@ -991,6 +1003,16 @@ class TetartoidTypes:
                 "method": OptimalTetartoid.try_methods[1],
                 "eq_edge_len": [1],
                 "eq_angle": [(0, 4), ],
+            },
+        },
+        # Again? TODO: check
+        "v_shape_face_butterfly_0_0": {
+            "start_with": (0.4, 0.8, 2.0),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "method": "COBYQA",
+                "eq_edge_len": [1],
+                "eq_angle": [(0, 1)],
             },
         },
         # edge: E0_EQ_E3_4
@@ -1119,15 +1141,6 @@ class TetartoidTypes:
                 "eq_angle": [(3, 4), (0, 2)],
             },
         },
-        "v_shape_face_butterfly_0": {
-            "start_with": (0.4, 0.8, 2.0),
-            "optimize_for": {
-                "opt_i": (0, 1),
-                "method": "COBYQA",
-                "eq_edge_len": [1],
-                "eq_angle": [(0, 1)],
-            },
-        },
     }
 
     def __init__(self):
@@ -1201,14 +1214,28 @@ if __name__ == "__main__":
     groups.append("uniform polyhedra")
     parser = argparse.ArgumentParser(description=DESCR)
     parser.add_argument(
-        "named_set",
-        help=f"Named set up tetartoids. Should be one of {groups}",
-    )
-    parser.add_argument(
         "-o", "--outdir",
         default=".",
         help="Specify the output directory of the JSON files. The directory must exist prior to "
         "the call.",
+    )
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--abc",
+        nargs=3,
+        type=float,
+        metavar=("a", "b", "c"),
+        help="Values of a, b and c",
+    )
+    group.add_argument(
+        "--tetartoid",
+        metavar="NAME",
+        help="The name of the tetartoid, must be one of {SpecialTetartoids.opt_setup.keys}",
+    )
+    group.add_argument(
+        "--named_set",
+        metavar="NAME",
+        help=f"Named set up tetartoids. Should be one of {groups}",
     )
     args = parser.parse_args()
 
@@ -1308,6 +1335,15 @@ if __name__ == "__main__":
 
     if args.named_set:
         NAMED_SET_MAP[args.named_set](output_dir)
+    else:
+        if args.abc:
+            tetartoid = Tetartoid(*args.abc)
+            name = "tetartoid"  # TODO add argument for name
+        else:
+            tetartoid = Tetartoid(*SpecialTetartoids.opt_setup[args.tetartoid]["abc"])
+            name = args.tetartoid
+        tetartoid.log_properties()
+        tetartoid.save_json(output_dir / f"{name}.json")
 
     #if abc:
     #    t = Tetartoid(*abc)
