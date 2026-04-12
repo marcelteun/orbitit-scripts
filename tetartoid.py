@@ -1,3 +1,10 @@
+"""Script to generate JSON files for different kinds of tetartoid polyhedra
+
+A tetartoid is a dodecahedron of 5 pentagons. The whole model has at least the rotation symmetries
+of a tetrahedron.
+"""
+# pylint: disable=too-many-lines
+import argparse
 from collections.abc import Callable
 from enum import IntEnum, auto
 import json
@@ -8,6 +15,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 class EdgeCat(IntEnum):
+    """Defines the category of edge properties that a tetartoid can have."""
     GENERAL = auto()  # there are three different edge lengths
     E0_EQ_E1_2 = auto()  # edge 0 has the same length as edge 1 and 2
     E0_EQ_E3_4 = auto()  # edge 0 has the same length as edge 3 and 4
@@ -15,6 +23,10 @@ class EdgeCat(IntEnum):
     ALL_EQ = auto()  # all edges have equal length
 
 class AngleCat(IntEnum):
+    """Defines the category of angle properties that a tetartoid can have.
+
+    With angle it is meant the angle in a face between the edges of a vertex.
+    """
     GENERAL = auto()  # there a five difference angles
     ONE_EQ_PAIR = auto()  # there is one pair with the same angle
     TWO_EQ_PAIRS = auto()  # there are two pairs with the same angle
@@ -27,17 +39,37 @@ logging.basicConfig(
     format="%(levelname)s: %(message)s",
     level=logging.INFO,
 )
+DESCR = """Generate Orbitit JSON files for a tetartoid polyhedron.
+
+A tetartoid is a dodecahedron of 5 pentagons. The whole model has at least the rotation symmetries
+of a tetrahedron.
+
+The definition that is used here is from https://en.wikipedia.org/wiki/Dodecahedron#Tetartoid
+with the exeption of the first requirement: 0 <= a <= b <= c which is mainly to prevent pentagrams.
+
+The JSON files are in the format of Orbitit describing orbit Shapes. The JSON file defines one
+face and the final symmetry (using E as the stabiliser symmetry).
+"""
 
 def tetar_n(a, b, c):
+    """Get the value of 'n' for a tetartoid defined by a, b, c."""
     return a**2 * c - b * c**2
 
 def tetar_d1(a, b, c):
+    """Get the value of 'd1' for a tetartoid defined by a, b, c."""
     return a * (a - b + c) + b * (b - 2 * c)
 
 def tetar_d2(a, b, c):
+    """Get the value of 'd2' for a tetartoid defined by a, b, c."""
     return a * (a + b - c) + b * (b - 2 * c)
 
 def tetar_face(a, b, c, e1, e2):
+    """From the five input numbers return one face of a tetartoid.
+
+    The values of a, b, and c are the standard values mention on the Wikipedia page.
+    e1 = n / d1
+    e2 = n / d2
+    """
     vertices = [
         [a, b, c],
         [-a, -b, c],
@@ -603,130 +635,210 @@ def generate_pyritohedra(outdir: Path):
         "pyritohedron_pentagrams_short_single_top": (0, τ1, 10 / 9),
         "great_stellated_dodecahedron": (0, τ1, 1),
         "pyritohedron_pentagrams_long_single_top": (0, τ1, τ - 1),
-        "d0_by_abc_10-1_x00": (0, τ1, δ[1]),  # three crossing lines
+        "n0_by_ac_00_0x": (0, τ1, δ[1]),  # three crossing lines
     }
     for name, abc in tetartoids.items():
         Tetartoid(*abc).save_json(outdir / (name + ".json"))
 
-# TODO: include all singularities here and rename
-def generate_at_singularities(key: str, outdir: Path):
-    """Generate the cases close to when d1 and / or d2 become equal to 0.
 
-    These are singularities
-
-    The files use the following structure for the naming:
-        d0_by_{abc}_{vals}_{deviations}
-        - d0 means that this is a singularity where 'd' becomes equal to 0
-        - {abc}_{vals}: for one singulariry there are several cases. This part describes the value
-                for a, b and/or c. The first part states which of these are specified. The second
-                part specifies the values.
-        - {deviation}: since for those values a singularity occurs you cannot really use those
-                values. Instead one or more use a diff. The following characters are used:
-                    * 0: no deviation, the value from {vals} is used.
-                    * n: some positive number is subtracted from the value in vals to show how the
-                        tetartoid looks like from that side of the singular point
-                    * p: some positive number is added to the value in vals to show how the
-                        tetartoid looks like from that side of the singular point
-                    * x: a tiny number either added of subtracted, to show what is obtained "at the"
-                        singular point". If a difference in sign for x would lead to two different
-                        cases, then instead '+' or '-' is used.
-                    * +: a tiny number is added to show what is obtained "at the" singular point.
-                    * -: a tiny number is subtracted to show what is obtained "at the" singular
-                        point.
-
-    key: possible values are:
-        "a=b=c",
-        "a=b=0",
-        "b=0 and c=-a",
-        "b=0 and c=a"
-    outdir: path to directotry where to save the JSON files.
-    """
-    ξ = [1e-4, 1e-3, 5e-3, 1e-5]
+def generate_at_singularity_case_n_1(outdir: Path):
+    """Generate the case where n = 0 by a=b=c."""
+    # TODO: remove not used ξ and δ values
+    ξ = [1e-4, 1e-3, 5e-3, 1e-5, 1e-2]
     δ = [2e-2, 4e-2, 1e-1, 2e-1, 3e-1]
     tetartoids = {
-        # singularities when n = 0:
-        "a=b=c": {
-            "n0_by_abc_111_n00": (1 - δ[2], 1, 1),
-            "n0_by_abc_111_x00": (1 - ξ[0], 1, 1),
-            "n0_by_abc_111_p00": (1 + δ[2], 1, 1),
-            "n0_by_abc_111_0n0": (1, 1 - δ[2], 1),
-            "n0_by_abc_111_0x0": (1, 1 - ξ[3], 1),
-            "n0_by_abc_111_0p0": (1, 1 + δ[2], 1),
-            "n0_by_abc_111_00n": (1, 1, 1 - δ[2]),
-            "n0_by_abc_111_00x": (1, 1, 1 - ξ[0]),
-            "n0_by_abc_111_00p": (1, 1, 1 + δ[2]),
-            "n0_by_abc_111_np0": (1 - δ[2], 1 + δ[2], 1),
-            "n0_by_abc_111_-+0": (1 - ξ[0], 1 + ξ[0], 1),
-            "n0_by_abc_111_pn0": (1 + δ[2], 1 - δ[2], 1),
-            "n0_by_abc_111_n0p": (1 - δ[2], 1, 1 + δ[2]),
-            "n0_by_abc_111_-0+": (1 - ξ[0], 1, 1 + ξ[0]),
-            "n0_by_abc_111_p0n": (1 + δ[2], 1, 1 - δ[2]),
-            "n0_by_abc_111_0np": (1, 1 - δ[2], 1 + δ[2]),
-            "n0_by_abc_111_0-+": (1, 1 - ξ[0], 1 + ξ[0]),
-            "n0_by_abc_111_0pn": (1, 1 + δ[2], 1 - δ[2]),
-        },
-        "bc/aa=1": {
-            "n0_by_abc_1xx-1_0n0": (1, 5 / 4 - δ[2], 4 / 5),
-            "n0_by_abc_1xx-1_0x0": (1, 5 / 4 - ξ[0], 4 / 5),
-            "n0_by_abc_1xx-1_0p0": (1, 5 / 4 + δ[2], 4 / 5),
-            "n0_by_abc_1x-1x_0n0": (1, 4 / 5 - δ[0], 5 / 4),
-            "n0_by_abc_1x-1x_0x0": (1, 4 / 5 - ξ[0], 5 / 4),
-            "n0_by_abc_1x-1x_0p0": (1, 4 / 5 + δ[0], 5 / 4),
-            "n0_by_abc_1xx-1_00p": (1, 4 / 5, 5 / 4 + 0.16),
-        },
-        # singularities when d = 0:
-        "a=b=0": {
-            "d0_by_ab_00_n0": (-δ[0], 0, 1),
-            "d0_by_ab_00_x0": (ξ[1], 0, 1),
-            "d0_by_ab_00_p0": (δ[0], 0, 1),
-            "d0_by_ab_00_0n": (0, -δ[1], 1),
-            "d0_by_ab_00_0x": (0, ξ[1], 1),
-            "d0_by_ab_00_0p": (0, δ[1], 1),
-            "d0_by_ab_00_nn": (-δ[1], -δ[1], 1),
-            "d0_by_ab_00_--": (-ξ[1], -ξ[1], 1),
-            "d0_by_ab_00_pp": (δ[1], δ[1], 1),
-            "d0_by_ab_00_np": (-δ[1], δ[1], 1),
-            "d0_by_ab_00_-+": (-ξ[1], ξ[1], 1),
-            "d0_by_ab_00_pn": (δ[1], -δ[1], 1),
-            # "d0_by_ab_00_+-": (ξ[1], -ξ[1], 1), same as -+
-            # "d0_by_ab_00_++": (ξ[1], ξ[1], 1), same as ++
-        },
-        "b=0 and c=-a": {
-            "d0_by_abc_10-1_n00": (1 - δ[2], 0, -1),
-            "d0_by_abc_10-1_x00": (1 - ξ[2], 0, -1),
-            "d0_by_abc_10-1_p00": (1 + δ[2], 0, -1),
-            "d0_by_abc_10-1_0n0": (1, 0 - δ[2], -1),
-            "d0_by_abc_10-1_0x0": (1, 0 + ξ[2], -1),
-            "d0_by_abc_10-1_0p0": (1, 0 + δ[2], -1),
-            "d0_by_abc_10-1_00n": (1, 0, -1 - δ[2]),
-            "d0_by_abc_10-1_00x": (1, 0, -1 + ξ[2]),
-            "d0_by_abc_10-1_00p": (1, 0, -1 + δ[2]),
-        },
-        "b=0 and c=a": {
-            "d0_by_abc_101_0n0": (1, 0 - δ[2], -1),
-            "d0_by_abc_101_0x0": (1, 0 - ξ[2], -1),
-            "d0_by_abc_101_0p0": (1, 0 - δ[2], -1),
-        },
-        "b≠0 and c=f1×b": {
-            # choose a = 1 and b = 4/5 to be similar to bc/aa=1
-            # Now here fa = 4/5 and f1 = 7/4, and c = 7/5
-            # Now scale to b = 1
-            "d1_0_by_abc_fabf1_00n": (5 / 4, 1, 7 / 4 - δ[1]),
-            "d1_0_by_abc_fabf1_00x": (5 / 4, 1, 7 / 4 - ξ[2]),
-            "d1_0_by_abc_fabf1_00p": (5 / 4, 1, 7 / 4 + δ[1]),
-        },
-        "b≠0 and c=f2×b": {
-            # Take b = 1, fa = 0.5, then f2 = 7/10
-            "d2_0_by_abc_fabf2_00n": (1 / 2, 1, 7 / 10 - δ[0]),
-            "d2_0_by_abc_fabf2_00x": (1 / 2, 1, 7 / 10 + ξ[1]),
-            "d2_0_by_abc_fabf2_00p": (1 / 2, 1, 7 / 10 + δ[0]),
-        },
-    }[key]
+        "n0_by_abc_111_n00": (1 - δ[2], 1, 1),
+        "n0_by_abc_111_x00": (1 - ξ[0], 1, 1),
+        "n0_by_abc_111_p00": (1 + δ[2], 1, 1),
+        "n0_by_abc_111_0n0": (1, 1 - δ[2], 1),
+        "n0_by_abc_111_0x0": (1, 1 - ξ[3], 1),
+        "n0_by_abc_111_0p0": (1, 1 + δ[2], 1),
+        "n0_by_abc_111_00n": (1, 1, 1 - δ[2]),
+        "n0_by_abc_111_00x": (1, 1, 1 - ξ[0]),
+        "n0_by_abc_111_00p": (1, 1, 1 + δ[2]),
+        "n0_by_abc_111_np0": (1 - δ[2], 1 + δ[2], 1),
+        "n0_by_abc_111_-+0": (1 - ξ[0], 1 + ξ[0], 1),
+        "n0_by_abc_111_pn0": (1 + δ[2], 1 - δ[2], 1),
+        "n0_by_abc_111_n0p": (1 - δ[2], 1, 1 + δ[2]),
+        "n0_by_abc_111_-0+": (1 - ξ[0], 1, 1 + ξ[0]),
+        "n0_by_abc_111_p0n": (1 + δ[2], 1, 1 - δ[2]),
+        "n0_by_abc_111_0np": (1, 1 - δ[2], 1 + δ[2]),
+        "n0_by_abc_111_0-+": (1, 1 - ξ[0], 1 + ξ[0]),
+        "n0_by_abc_111_0pn": (1, 1 + δ[2], 1 - δ[2]),
+    }
     for name, abc in tetartoids.items():
         Tetartoid(*abc).save_json(outdir / (name + ".json"))
 
 
+def generate_at_singularity_case_n_2(outdir: Path):
+    """Generate the case where n = 0 by bc/aa=1."""
+    # TODO: remove not used ξ and δ values
+    ξ = [1e-4, 1e-3, 5e-3, 1e-5, 1e-2]
+    δ = [2e-2, 4e-2, 1e-1, 2e-1, 3e-1]
+    tetartoids = {
+        "n0_by_abc_1xx-1_0n0": (1, 5 / 4 - δ[2], 4 / 5),
+        "n0_by_abc_1xx-1_0x0": (1, 5 / 4 - ξ[0], 4 / 5),
+        "n0_by_abc_1xx-1_0p0": (1, 5 / 4 + δ[2], 4 / 5),
+        "n0_by_abc_1x-1x_0n0": (1, 4 / 5 - δ[0], 5 / 4),
+        "n0_by_abc_1x-1x_0x0": (1, 4 / 5 - ξ[0], 5 / 4),
+        "n0_by_abc_1x-1x_0p0": (1, 4 / 5 + δ[0], 5 / 4),
+        "n0_by_abc_1xx-1_00p": (1, 4 / 5, 5 / 4 + 0.16),
+    }
+    for name, abc in tetartoids.items():
+        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+
+
+def generate_at_singularity_case_n_3(outdir: Path):
+    """Generate the case where n = 0 by c=0."""
+    # TODO: remove not used ξ and δ values
+    ξ = [1e-4, 1e-3, 5e-3, 1e-5, 1e-2]
+    δ = [2e-2, 4e-2, 1e-1, 2e-1, 3e-1]
+    tetartoids = {
+        "n0_by_ac_00_0n": (0, 2, 0 - δ[3]),
+        "n0_by_ac_00_0x": (0, 2, 0 - ξ[4]),
+        "n0_by_ac_00_0p": (0, 2, 0 + δ[3]),
+        "n0_by_ac_10_0n": (1, 2, 0 - δ[3]),
+        "n0_by_ac_10_0x": (1, 2, 0 - ξ[4]),
+        "n0_by_ac_10_0p": (1, 2, 0 + δ[3]),
+    }
+    for name, abc in tetartoids.items():
+        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+
+
+def generate_at_singularity_case_d_1(outdir: Path):
+    """Generate the case where n = 0 by a=b=0b=c."""
+    # TODO: remove not used ξ and δ values
+    ξ = [1e-4, 1e-3, 5e-3, 1e-5, 1e-2]
+    δ = [2e-2, 4e-2, 1e-1, 2e-1, 3e-1]
+    tetartoids = {
+        "d0_by_ab_00_n0": (-δ[0], 0, 1),
+        "d0_by_ab_00_x0": (ξ[1], 0, 1),
+        "d0_by_ab_00_p0": (δ[0], 0, 1),
+        "d0_by_ab_00_0n": (0, -δ[1], 1),
+        "d0_by_ab_00_0x": (0, ξ[1], 1),
+        "d0_by_ab_00_0p": (0, δ[1], 1),
+        "d0_by_ab_00_nn": (-δ[1], -δ[1], 1),
+        "d0_by_ab_00_--": (-ξ[1], -ξ[1], 1),
+        "d0_by_ab_00_pp": (δ[1], δ[1], 1),
+        "d0_by_ab_00_np": (-δ[1], δ[1], 1),
+        "d0_by_ab_00_-+": (-ξ[1], ξ[1], 1),
+        "d0_by_ab_00_pn": (δ[1], -δ[1], 1),
+        # "d0_by_ab_00_+-": (ξ[1], -ξ[1], 1), same as -+
+        # "d0_by_ab_00_++": (ξ[1], ξ[1], 1), same as ++
+    }
+    for name, abc in tetartoids.items():
+        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+
+
+def generate_at_singularity_case_d_2(outdir: Path):
+    """Generate the case where n = 0 by b=0 and c=-a."""
+    # TODO: remove not used ξ and δ values
+    ξ = [1e-4, 1e-3, 5e-3, 1e-5, 1e-2]
+    δ = [2e-2, 4e-2, 1e-1, 2e-1, 3e-1]
+    tetartoids = {
+        "d0_by_abc_10-1_n00": (1 - δ[2], 0, -1),
+        "d0_by_abc_10-1_x00": (1 - ξ[2], 0, -1),
+        "d0_by_abc_10-1_p00": (1 + δ[2], 0, -1),
+        "d0_by_abc_10-1_0n0": (1, 0 - δ[2], -1),
+        "d0_by_abc_10-1_0x0": (1, 0 + ξ[2], -1),
+        "d0_by_abc_10-1_0p0": (1, 0 + δ[2], -1),
+        "d0_by_abc_10-1_00n": (1, 0, -1 - δ[2]),
+        "d0_by_abc_10-1_00x": (1, 0, -1 + ξ[2]),
+        "d0_by_abc_10-1_00p": (1, 0, -1 + δ[2]),
+    }
+    for name, abc in tetartoids.items():
+        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+
+
+def generate_at_singularity_case_d_3(outdir: Path):
+    """Generate the case where n = 0 by b=0 and c=a."""
+    # TODO: remove not used ξ and δ values
+    ξ = [1e-4, 1e-3, 5e-3, 1e-5, 1e-2]
+    δ = [2e-2, 4e-2, 1e-1, 2e-1, 3e-1]
+    tetartoids = {
+        "d0_by_abc_101_n00": (1 - δ[2], 0, 1),
+        "d0_by_abc_101_x00": (1 - ξ[2], 0, 1),
+        "d0_by_abc_101_p00": (1 + δ[2], 0, 1),
+        "d0_by_abc_101_0n0": (1, 0 - δ[2], 1),
+        "d0_by_abc_101_0x0": (1, 0 - ξ[2], 1),
+        "d0_by_abc_101_0p0": (1, 0 - δ[2], 1),
+        "d0_by_abc_101_00n": (1, 0, 1 - δ[2]),
+        "d0_by_abc_101_00x": (1, 0, 1 + ξ[2]),
+        "d0_by_abc_101_00p": (1, 0, 1 + δ[2]),
+    }
+    for name, abc in tetartoids.items():
+        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+
+
+def generate_at_singularity_case_d_4(outdir: Path):
+    """Generate the case where n = 0 by b≠0 and c=f1×b."""
+    # TODO: remove not used ξ and δ values
+    ξ = [1e-4, 1e-3, 5e-3, 1e-5, 1e-2]
+    δ = [2e-2, 4e-2, 1e-1, 2e-1, 3e-1]
+    tetartoids = {
+        # choose a = 1 and b = 4/5 to be similar to bc/aa=1
+        # Now here fa = 4/5 and f1 = 7/4, and c = 7/5
+        # Now scale to b = 1
+        "d1_0_by_abc_fabf1_00n": (5 / 4, 1, 7 / 4 - δ[1]),
+        "d1_0_by_abc_fabf1_00x": (5 / 4, 1, 7 / 4 - ξ[2]),
+        "d1_0_by_abc_fabf1_00p": (5 / 4, 1, 7 / 4 + δ[1]),
+    }
+    for name, abc in tetartoids.items():
+        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+
+
+def generate_at_singularity_case_d_5(outdir: Path):
+    """Generate the case where n = 0 by b≠0 and c=f2×b."""
+    # TODO: remove not used ξ and δ values
+    ξ = [1e-4, 1e-3, 5e-3, 1e-5, 1e-2]
+    δ = [2e-2, 4e-2, 1e-1, 2e-1, 3e-1]
+    tetartoids = {
+        # Take b = 1, fa = 0.5, then f2 = 7/10
+        "d2_0_by_abc_fabf2_00n": (1 / 2, 1, 7 / 10 - δ[0]),
+        "d2_0_by_abc_fabf2_00x": (1 / 2, 1, 7 / 10 + ξ[1]),
+        "d2_0_by_abc_fabf2_00p": (1 / 2, 1, 7 / 10 + δ[0]),
+    }
+    for name, abc in tetartoids.items():
+        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+
+
+NAMED_SET_MAP = {
+    "pyritohedra": generate_pyritohedra,
+    "uniform polyhedra": generate_uniform,
+    # singularities when c = 0
+    # ------------------------
+    "a=b=c": generate_at_singularity_case_n_1,
+    "bc/aa=1": generate_at_singularity_case_n_2,
+    "c=0": generate_at_singularity_case_n_3,
+    # singularities when d = 0
+    # ------------------------
+    "a=b=0": generate_at_singularity_case_d_1,
+    "b=0 and c=-a": generate_at_singularity_case_d_2,
+    "b=0 and c=a": generate_at_singularity_case_d_3,
+    "b≠0 and c=f1×b": generate_at_singularity_case_d_4,
+    "b≠0 and c=f2×b": generate_at_singularity_case_d_5,
+}
+
+
 if __name__ == "__main__":
+    groups = list(NAMED_SET_MAP.keys())
+    groups.append("pyritohedra")
+    groups.append("uniform polyhedra")
+    parser = argparse.ArgumentParser(description=DESCR)
+    parser.add_argument(
+        "named_set",
+        help=f"Named set up tetartoids. Should be one of {groups}",
+    )
+    parser.add_argument(
+        "-o", "--outdir",
+        default=".",
+        help="Specify the output directory of the JSON files. The directory must exist prior to "
+        "the call.",
+    )
+    args = parser.parse_args()
+
+    outdir = Path(args.outdir) if args.outdir else Path(".")
+
     set_of_tetartoids = {
     }
 
@@ -1165,27 +1277,11 @@ if __name__ == "__main__":
     # leads to almost Great stellated dodecahedron: find out when that is happening..
     abc = 0, tau + 1, 1e-4
 
-    # TODO: make this an input parameter
-    # TODO: create dir if it doesn't exist
-    outdir = Path("/home/marceltn/self/fromGitHub/orbitit-scripts/out/tetartoids")
-
-    # TODO: generate depending on a command line parameter
-    #generate_pyritohedra(outdir)
-    #generate_uniform(outdir)
-
     # d1 = 0
     abc = -2e-2, 0, 1
 
-    # N = 0
-    # generate_at_singularities("a=b=c", outdir)
-    # generate_at_singularities("bc/aa=1", outdir)
-
-    # D = 0
-    # generate_at_singularities("a=b=0", outdir)
-    # generate_at_singularities("b=0 and c=-a", outdir)
-    # generate_at_singularities("b=0 and c=a", outdir)
-    # generate_at_singularities("b≠0 and c=f1×b", outdir)
-    generate_at_singularities("b≠0 and c=f2×b", outdir)
+    if args.named_set:
+        NAMED_SET_MAP[args.named_set](outdir)
 
     #if abc:
     #    t = Tetartoid(*abc)
