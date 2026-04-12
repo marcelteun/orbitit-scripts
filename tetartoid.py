@@ -204,6 +204,16 @@ class Tetartoid():
         """
         return get_edge_angles(self.face)
 
+    @property
+    def is_convex(self):
+        """Return whether this tetartoid is convex.
+
+        I am assuming that the first Wikipedia requirement is related to that.
+        Note that this will call unify, which rescales the tetartoid.
+        """
+        self.unify()
+        return self.a <= self.b <= self.c
+
     def set_related(self, relation: Callable[[int, int, int], bool]) -> None:
         """Set a function to check whether another tetartoid is related by using a, b, c.
 
@@ -463,10 +473,11 @@ class Tetartoid():
             LOGGER.info("Angle at vertex no. %d is %0.10f°", i, angle)
 
 
-class TetartoidEqEdgeLengths(Tetartoid):
+class OptimalTetartoid(Tetartoid):
 
     valid_eq_edge_len = (0, 1, 2, 3)
     valid_eq_angle = (0, 1, 2, 3, 4)
+    try_methods = ("Powell", "Nelder-Mead", "COBYQA", "BFGS", "SLSQP")
 
     def __init__(self, init_abc, optimize_for, name=""):
         """
@@ -545,6 +556,7 @@ class TetartoidEqEdgeLengths(Tetartoid):
         return tetar_face(self._try_abc[0], self._try_abc[1], self._try_abc[2], e1, e2)
 
     def value_to_minimize(self, values):
+        """The is the method, for which the result is minimized by SciPy's minimize."""
         for i, opt_i in enumerate(self.optimize["opt_i"]):
             self._try_abc[opt_i] = values[i]
 
@@ -570,6 +582,13 @@ class TetartoidEqEdgeLengths(Tetartoid):
         return delta_edge_len + angle_factor * angle_diff
 
     def calc_x(self):
+        """Find a tetartoid a, b, c configuration for the current setup.
+
+        While starting with some a, b and c. values find a tetartoid, for which the result of
+        value_to_minimize is smallest.
+
+        Return: the tuple a, b, c for which the minimum was found.
+        """
         result = minimize(self.value_to_minimize, self._try_abc, method=self.optimize["method"])
         print(result)
         if not result.success:
@@ -603,8 +622,8 @@ def generate_uniform(outdir: Path):
         "regular_dodecahedron": (0, τ1, τ1**2),
         "great_stellated_dodecahedron": (0, τ1, 1),
     }
-    for name, abc in tetartoids.items():
-        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+    for filename, abc_values in tetartoids.items():
+        Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
 
 
 def generate_pyritohedra(outdir: Path):
@@ -637,8 +656,8 @@ def generate_pyritohedra(outdir: Path):
         "pyritohedron_pentagrams_long_single_top": (0, τ1, τ - 1),
         "n0_by_ac_00_0x": (0, τ1, δ[1]),  # three crossing lines
     }
-    for name, abc in tetartoids.items():
-        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+    for filename, abc_values in tetartoids.items():
+        Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
 
 
 def generate_at_singularity_case_n_1(outdir: Path):
@@ -666,8 +685,8 @@ def generate_at_singularity_case_n_1(outdir: Path):
         "n0_by_abc_111_0-+": (1, 1 - ξ[0], 1 + ξ[0]),
         "n0_by_abc_111_0pn": (1, 1 + δ[2], 1 - δ[2]),
     }
-    for name, abc in tetartoids.items():
-        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+    for filename, abc_values in tetartoids.items():
+        Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
 
 
 def generate_at_singularity_case_n_2(outdir: Path):
@@ -684,8 +703,8 @@ def generate_at_singularity_case_n_2(outdir: Path):
         "n0_by_abc_1x-1x_0p0": (1, 4 / 5 + δ[0], 5 / 4),
         "n0_by_abc_1xx-1_00p": (1, 4 / 5, 5 / 4 + 0.16),
     }
-    for name, abc in tetartoids.items():
-        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+    for filename, abc_values in tetartoids.items():
+        Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
 
 
 def generate_at_singularity_case_n_3(outdir: Path):
@@ -701,8 +720,8 @@ def generate_at_singularity_case_n_3(outdir: Path):
         "n0_by_ac_10_0x": (1, 2, 0 - ξ[4]),
         "n0_by_ac_10_0p": (1, 2, 0 + δ[3]),
     }
-    for name, abc in tetartoids.items():
-        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+    for filename, abc_values in tetartoids.items():
+        Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
 
 
 def generate_at_singularity_case_d_1(outdir: Path):
@@ -726,8 +745,8 @@ def generate_at_singularity_case_d_1(outdir: Path):
         # "d0_by_ab_00_+-": (ξ[1], -ξ[1], 1), same as -+
         # "d0_by_ab_00_++": (ξ[1], ξ[1], 1), same as ++
     }
-    for name, abc in tetartoids.items():
-        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+    for filename, abc_values in tetartoids.items():
+        Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
 
 
 def generate_at_singularity_case_d_2(outdir: Path):
@@ -746,8 +765,8 @@ def generate_at_singularity_case_d_2(outdir: Path):
         "d0_by_abc_10-1_00x": (1, 0, -1 + ξ[2]),
         "d0_by_abc_10-1_00p": (1, 0, -1 + δ[2]),
     }
-    for name, abc in tetartoids.items():
-        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+    for filename, abc_values in tetartoids.items():
+        Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
 
 
 def generate_at_singularity_case_d_3(outdir: Path):
@@ -766,8 +785,8 @@ def generate_at_singularity_case_d_3(outdir: Path):
         "d0_by_abc_101_00x": (1, 0, 1 + ξ[2]),
         "d0_by_abc_101_00p": (1, 0, 1 + δ[2]),
     }
-    for name, abc in tetartoids.items():
-        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+    for filename, abc_values in tetartoids.items():
+        Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
 
 
 def generate_at_singularity_case_d_4(outdir: Path):
@@ -783,8 +802,8 @@ def generate_at_singularity_case_d_4(outdir: Path):
         "d1_0_by_abc_fabf1_00x": (5 / 4, 1, 7 / 4 - ξ[2]),
         "d1_0_by_abc_fabf1_00p": (5 / 4, 1, 7 / 4 + δ[1]),
     }
-    for name, abc in tetartoids.items():
-        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+    for filename, abc_values in tetartoids.items():
+        Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
 
 
 def generate_at_singularity_case_d_5(outdir: Path):
@@ -798,8 +817,8 @@ def generate_at_singularity_case_d_5(outdir: Path):
         "d2_0_by_abc_fabf2_00x": (1 / 2, 1, 7 / 10 + ξ[1]),
         "d2_0_by_abc_fabf2_00p": (1 / 2, 1, 7 / 10 + δ[0]),
     }
-    for name, abc in tetartoids.items():
-        Tetartoid(*abc).save_json(outdir / (name + ".json"))
+    for filename, abc_values in tetartoids.items():
+        Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
 
 
 NAMED_SET_MAP = {
@@ -819,93 +838,9 @@ NAMED_SET_MAP = {
     "b≠0 and c=f2×b": generate_at_singularity_case_d_5,
 }
 
-
-if __name__ == "__main__":
-    groups = list(NAMED_SET_MAP.keys())
-    groups.append("pyritohedra")
-    groups.append("uniform polyhedra")
-    parser = argparse.ArgumentParser(description=DESCR)
-    parser.add_argument(
-        "named_set",
-        help=f"Named set up tetartoids. Should be one of {groups}",
-    )
-    parser.add_argument(
-        "-o", "--outdir",
-        default=".",
-        help="Specify the output directory of the JSON files. The directory must exist prior to "
-        "the call.",
-    )
-    args = parser.parse_args()
-
-    outdir = Path(args.outdir) if args.outdir else Path(".")
-
-    set_of_tetartoids = {
-    }
-
-    def add_to_set(tetartoid):
-        tetartoid.unify()
-        set_of_tetartoids[tetartoid.abc] = tetartoid
-
-    def find_in_set(tetartoid):
-        tetartoid.unify()
-        candidates = {}
-        for t in set_of_tetartoids.values():
-            if tetartoid == t:
-                candidates[t.name] = t
-            else:
-                # if a relation is defined check it:
-                if t.related:
-                    if t.related(*tetartoid.abc):
-                        candidates[t.name] = t
-        if len(candidates) == 0:
-            return None
-        if len(candidates) == 1:
-            for t_d in candidates.values():
-                return t_d
-        diffs = [
-            np.sum(tetartoid.diff(t_d, simple=False))
-            for t_d in candidates.values()
-        ]
-        objs = np.array(list(candidates.values()))
-        result = objs[np.array(diffs).argmin()]
-        return result
-
-    #t = TetartoidOneReq(a=1, b=1.1)
-    #t = TetartoidOneReq(b=1, c=1.1)
-    #t = TetartoidOneReq(a=0.4, c=2)
-
-    # It seems that if you start with b=1 then you will get a convex polyhedron.
-    # That happened at least with Nelder-Mead and Powell and the default method
-    # Powel seems to converge better.
-    #t = TetartoidEqEdgeLengths(b=1, method="Powell", eq_edge_len=1)
-    #t = TetartoidEqEdgeLengths(a=0, method="Nelder-Mead", eq_edge_len=1)
-    #t = TetartoidEqEdgeLengths(b=0, method="BFGS", eq_edge_len=1)
-
-    # Hats...
-    #t = TetartoidEqEdgeLengths((0.9, 0.9, 2), keep_index=2, method="Powell", eq_edge_len=2)
-    # Not really converged: 3 edge lengths
-    # t = TetartoidEqEdgeLengths((0.4, 0.8, 2.0), keep_index=0, method="Powell", eq_edge_len=2)
-    # Same result:
-    # t = TetartoidEqEdgeLengths((0.4, 0.8, 2.0), keep_index=0, method="Powell", eq_edge_len=2)
-
-    # Self intersecting face and butterfly shaped
-    # Not really converged: no equal angles
-    #    (0.4, 0.8, 2.0), keep_index=2, method="Powell", eq_edge_len=1, eq_angle=1
-
-    # Regular dodecahedron.
-    # t = TetartoidEqEdgeLengths((0.1, 1.0, 2.0), keep_index=1, method="Powell", eq_edge_len=2)
-    # t = TetartoidEqEdgeLengths((0.4, 0.8, 2.0), keep_index=1, method="Powell", eq_edge_len=2)
-    # t = TetartoidEqEdgeLengths((0.4, 0.8, 2.0), keep_index=1, method="Powell", eq_edge_len=1)
-    # (0.4, 0.8, 2.0), keep_index=2, method="Powell", eq_edge_len=1, eq_angle=3
-
-    name = "regular_dodecahedron"
-
-    # I tried combinations of eq_angle. They all lead to "almost" regular dodecahedra and they
-    # didn't optimize completely. I.e. would they go the whole way, then it would be a regular
-    # regular dodecahedron
+class TetartoidTypes:
 
     tau = (np.sqrt(5) + 1) / 2
-    try_methods = ("Powell", "Nelder-Mead", "COBYQA", "BFGS", "SLSQP")
     opt_setup = {
         # ######################################################
         # Regular shaped
@@ -1053,7 +988,7 @@ if __name__ == "__main__":
             "start_with": (1., 0.2, 2.5),
             "optimize_for": {
                 "opt_i": (0, 1),
-                "method": try_methods[1],
+                "method": OptimalTetartoid.try_methods[1],
                 "eq_edge_len": [1],
                 "eq_angle": [(0, 4), ],
             },
@@ -1066,7 +1001,7 @@ if __name__ == "__main__":
             "start_with": (1., 0.2, 2.5),
             "optimize_for": {
                 "opt_i": (0, 1),
-                "method": try_methods[1],
+                "method": OptimalTetartoid.try_methods[1],
                 "eq_edge_len": [2],
                 "eq_angle": [(0, 4), ],
             },
@@ -1102,7 +1037,7 @@ if __name__ == "__main__":
             "start_with": (1, 2.3, 1.3),
             "optimize_for": {
                 "opt_i": (1, 2),
-                #"method": try_methods[2],
+                #"method": OptimalTetartoid.try_methods[2],
                 "eq_edge_len": [1],
                 "eq_angle": [(3, 4), ],
             },
@@ -1172,7 +1107,7 @@ if __name__ == "__main__":
             "start_with": (1.6, -0.1, 1.5),
             "optimize_for": {
                 "opt_i": (0, 1),
-                "method": try_methods[4],
+                "method": OptimalTetartoid.try_methods[4],
                 "eq_angle": [(3, 4), (0, 1)],
             },
         },
@@ -1195,39 +1130,130 @@ if __name__ == "__main__":
         },
     }
 
-    def find_tetartoid(name):
+    def __init__(self):
+        # Gather all kinds of tetartoids here:
+        self.set_of_tetartoids = {}
+        for name in self.opt_setup.keys():
+            t = self.find_tetartoid(name)
+            # always add, don't check:
+            # if find_in_set(t) is None:
+            # since some abc are very close but with very different results
+            self.add_to_set(t)
+
+            # TODO: break out
+            #t.save_json()
+
+    def find_tetartoid(self, name):
         """Find a pre-defined tetartoid in opt_setup
 
         name: the name used in set_of_tetartoids
 
         return: the Tetartoid object
         """
-        setup = opt_setup[name]
+        setup = self.opt_setup[name]
         if "abc" in setup:
             tetartoid = Tetartoid(*setup["abc"], name=name)
             if "related" in setup:
                 tetartoid.set_related(setup["related"])
             return tetartoid
         else:
-            return TetartoidEqEdgeLengths(setup["start_with"], setup["optimize_for"], name=name)
+            return OptimalTetartoid(setup["start_with"], setup["optimize_for"], name=name)
 
-    for name in opt_setup.keys():
-        t = find_tetartoid(name)
-        # always add, don't check:
-        # if find_in_set(t) is None:
-        # since some abc are very close but with very different results
-        add_to_set(t)
-        t.save_json()
+    def add_to_set(self, tetartoid):
+        """Add specified kind of tetartoid to the set, using abc tuple as key."""
+        tetartoid.unify()
+        self.set_of_tetartoids[tetartoid.abc] = tetartoid
 
-    for t in set_of_tetartoids.values():
-        t.log_properties()
+    def find_in_set(self, tetartoid):
+        """Check whether the specified kind of tetartoid exists in the set."""
+        tetartoid.unify()
+        candidates = {}
+        for t in self.set_of_tetartoids.values():
+            if tetartoid == t:
+                candidates[t.name] = t
+            else:
+                # if a relation is defined check it:
+                if t.related:
+                    if t.related(*tetartoid.abc):
+                        candidates[t.name] = t
+        if len(candidates) == 0:
+            return None
+        if len(candidates) == 1:
+            for t_d in candidates.values():
+                return t_d
+        diffs = [
+            np.sum(tetartoid.diff(t_d, simple=False))
+            for t_d in candidates.values()
+        ]
+        objs = np.array(list(candidates.values()))
+        result = objs[np.array(diffs).argmin()]
+        return result
+
+    def log_set(self):
+        """Log the properties of the tetartoids in the set."""
+        for t in self.set_of_tetartoids.values():
+            t.log_properties()
+
+
+if __name__ == "__main__":
+    groups = list(NAMED_SET_MAP.keys())
+    groups.append("pyritohedra")
+    groups.append("uniform polyhedra")
+    parser = argparse.ArgumentParser(description=DESCR)
+    parser.add_argument(
+        "named_set",
+        help=f"Named set up tetartoids. Should be one of {groups}",
+    )
+    parser.add_argument(
+        "-o", "--outdir",
+        default=".",
+        help="Specify the output directory of the JSON files. The directory must exist prior to "
+        "the call.",
+    )
+    args = parser.parse_args()
+
+    output_dir = Path(args.outdir) if args.outdir else Path(".")
+
+    #t = TetartoidOneReq(a=1, b=1.1)
+    #t = TetartoidOneReq(b=1, c=1.1)
+    #t = TetartoidOneReq(a=0.4, c=2)
+
+    # It seems that if you start with b=1 then you will get a convex polyhedron.
+    # That happened at least with Nelder-Mead and Powell and the default method
+    # Powel seems to converge better.
+    #t = OptimalTetartoid(b=1, method="Powell", eq_edge_len=1)
+    #t = OptimalTetartoid(a=0, method="Nelder-Mead", eq_edge_len=1)
+    #t = OptimalTetartoid(b=0, method="BFGS", eq_edge_len=1)
+
+    # Hats...
+    #t = OptimalTetartoid((0.9, 0.9, 2), keep_index=2, method="Powell", eq_edge_len=2)
+    # Not really converged: 3 edge lengths
+    # t = OptimalTetartoid((0.4, 0.8, 2.0), keep_index=0, method="Powell", eq_edge_len=2)
+    # Same result:
+    # t = OptimalTetartoid((0.4, 0.8, 2.0), keep_index=0, method="Powell", eq_edge_len=2)
+
+    # Self intersecting face and butterfly shaped
+    # Not really converged: no equal angles
+    #    (0.4, 0.8, 2.0), keep_index=2, method="Powell", eq_edge_len=1, eq_angle=1
+
+    # Regular dodecahedron.
+    # t = OptimalTetartoid((0.1, 1.0, 2.0), keep_index=1, method="Powell", eq_edge_len=2)
+    # t = OptimalTetartoid((0.4, 0.8, 2.0), keep_index=1, method="Powell", eq_edge_len=2)
+    # t = OptimalTetartoid((0.4, 0.8, 2.0), keep_index=1, method="Powell", eq_edge_len=1)
+    # (0.4, 0.8, 2.0), keep_index=2, method="Powell", eq_edge_len=1, eq_angle=3
+
+    name = "regular_dodecahedron"
+
+    # I tried combinations of eq_angle. They all lead to "almost" regular dodecahedra and they
+    # didn't optimize completely. I.e. would they go the whole way, then it would be a regular
+    # regular dodecahedron
 
     # TODO: You can still require that lengths 1,2 == 3, 4
     # This is what you want for
     # start_with = (1., x, x)
 
     # Try:
-    #tau = (np.sqrt(5) + 1) / 2
+    tau = (np.sqrt(5) + 1) / 2
     #start_with = (0., 1.0, -tau)
     start_with = (1, 2.3, 1.3)
     start_with = (1, 3.0, 2.7)
@@ -1235,7 +1261,7 @@ if __name__ == "__main__":
     start_with = (1.0, 1., .9)
     optimize_for = {
         "opt_i": (1, 2),
-        "method": try_methods[1],
+        "method": OptimalTetartoid.try_methods[1],
         #"eq_edge_len": [3],
         "eq_angle": [(3, 4), (0, 1)],
     }
@@ -1281,13 +1307,13 @@ if __name__ == "__main__":
     abc = -2e-2, 0, 1
 
     if args.named_set:
-        NAMED_SET_MAP[args.named_set](outdir)
+        NAMED_SET_MAP[args.named_set](output_dir)
 
     #if abc:
     #    t = Tetartoid(*abc)
     #    t.save_json()
     #else:
-    #    t = TetartoidEqEdgeLengths(start_with, optimize_for, name="test")
+    #    t = OptimalTetartoid(start_with, optimize_for, name="test")
     #LOGGER.info("=================================")
     #t1 = find_in_set(t)
 
