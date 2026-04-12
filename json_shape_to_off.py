@@ -47,5 +47,6 @@ if __name__ == "__main__":
         path = Path(json_file).stem
         new_file = out_dir / (path + ".off")
         with open(new_file, "w") as fd:
-            fd.write(shape.to_off())
+            clean_shape = shape.clean_shape(precision=9)
+            fd.write(clean_shape.to_off())
             logging.info("written %s", new_file)
