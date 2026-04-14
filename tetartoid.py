@@ -1230,12 +1230,13 @@ if __name__ == "__main__":
     group.add_argument(
         "--tetartoid",
         metavar="NAME",
-        help="The name of the tetartoid, must be one of {SpecialTetartoids.opt_setup.keys}",
+        help="The name of a predefined tetartoid, must be one of "
+        f"{list(SpecialTetartoids.opt_setup.keys())}",
     )
     group.add_argument(
         "--named_set",
         metavar="NAME",
-        help=f"Named set up tetartoids. Should be one of {groups}",
+        help=f"Named set of tetartoids. Should be one of {groups}",
     )
     args = parser.parse_args()
 
