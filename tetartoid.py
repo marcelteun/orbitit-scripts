@@ -50,6 +50,9 @@ with the exeption of the first requirement: 0 <= a <= b <= c which is mainly to 
 The JSON files are in the format of Orbitit describing orbit Shapes. The JSON file defines one
 face and the final symmetry (using E as the stabiliser symmetry).
 """
+TAU = (np.sqrt(5) + 1) / 2
+TAU2 = TAU + 1  # same as τ**2
+
 
 def tetar_n(a, b, c):
     """Get the value of 'n' for a tetartoid defined by a, b, c."""
@@ -612,16 +615,14 @@ def generate_uniform(outdir: Path):
 
     outdir: path to directotry where to save the JSON files.
     """
-    τ = (np.sqrt(5) + 1) / 2
-    τ1 = τ + 1
     tetartoids = {
         # "cube": (0, 1, 1),
         # Use the following instead to get the same file as the cube below
-        "cube": (0, τ1, τ1),
+        "cube": (0, TAU2, TAU2),
         "cubic": (1, 1.5, 1.5),
         "tetrahedron": (1, 1, 3),
-        "regular_dodecahedron": (0, τ1, τ1**2),
-        "great_stellated_dodecahedron": (0, τ1, 1),
+        "regular_dodecahedron": (0, TAU2, TAU2**2),
+        "great_stellated_dodecahedron": (0, TAU2, 1),
     }
     for filename, abc_values in tetartoids.items():
         Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
@@ -638,24 +639,37 @@ def generate_pyritohedra(outdir: Path):
 
     outdir: path to directotry where to save the JSON files.
     """
-    τ = (np.sqrt(5) + 1) / 2
-    τ1 = τ + 1
     δ = [1e-3, 1e-2]
     big = 4000
     tetartoids = {
-        "rhombic_dodecahedron": (0, τ1, big),
-        "pyritohedron_slim_pentagons": (0, τ1, τ1**2 + 5),
-        "regular_dodecahedron": (0, τ1, τ1**2),
-        "pyritohedron_wide_pentagons": (0, τ1, 2 * τ + 1),
-        "cube": (0, τ1, τ1),
-        "pyritohedron_concave_obtuse": (0, τ1, τ + 1 / 2),
-        "endododecahedron": (0, τ1, τ),
-        "pyritohedron_concave_sharp": (0, τ1, τ - 1 / 5),
-        "d0_by_abc_021_00x": (0, τ1, τ1 / 2 + 2 * δ[0]),
-        "pyritohedron_pentagrams_short_single_top": (0, τ1, 10 / 9),
-        "great_stellated_dodecahedron": (0, τ1, 1),
-        "pyritohedron_pentagrams_long_single_top": (0, τ1, τ - 1),
-        "n0_by_ac_00_0x": (0, τ1, δ[1]),  # three crossing lines
+        "rhombic_dodecahedron": (0, TAU2, big),
+        "pyritohedron_slim_pentagons": (0, TAU2, TAU2**2 + 5),
+        "regular_dodecahedron": (0, TAU2, TAU2**2),
+        "pyritohedron_wide_pentagons": (0, TAU2, 2 * TAU + 1),
+        "cube": (0, TAU2, TAU2),
+        "pyritohedron_concave_obtuse": (0, TAU2, TAU + 1 / 2),
+        "endododecahedron": (0, TAU2, TAU),
+        "pyritohedron_concave_sharp": (0, TAU2, TAU - 1 / 5),
+        "d0_by_abc_021_00x": (0, TAU2, TAU2 / 2 + 2 * δ[0]),
+        "pyritohedron_pentagrams_short_single_top": (0, TAU2, 10 / 9),
+        "great_stellated_dodecahedron": (0, TAU2, 1),
+        "pyritohedron_pentagrams_long_single_top": (0, TAU2, TAU - 1),
+        "n0_by_ac_00_0x": (0, TAU2, δ[1]),  # three crossing lines
+    }
+    for filename, abc_values in tetartoids.items():
+        Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
+
+
+def generate_equilateral(outdir: Path):
+    """Generate tetartoids that are equilateral.
+
+    It is understood that edges with length 0 shall be removed.
+    """
+    tetartoids = {
+        "tetraaugmented_tetrahedron": (1 + 2e-11, 1 - 1e-11, 1),
+        "extended_regular_dodecahedron": (0, 1, -TAU),
+        "endododecahedron": (0, TAU2, TAU),
+        "rhombic_dodecahedron": (0, 1e-11, 1),
     }
     for filename, abc_values in tetartoids.items():
         Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
@@ -825,6 +839,7 @@ def generate_at_singularity_case_d_5(outdir: Path):
 NAMED_SET_MAP = {
     "pyritohedra": generate_pyritohedra,
     "uniform polyhedra": generate_uniform,
+    "equilateral polyhedra": generate_equilateral,
     # singularities when c = 0
     # ------------------------
     "a=b=c": generate_at_singularity_case_n_1,
@@ -909,11 +924,37 @@ class SpecialTetartoids:
         # edge: E0_EQ_E3_4
         # angle: ONE_EQ_PAIR
         # regular tetraaugmented tetrahedron
-        # TODO: add this to the web-site
         "tetraaugmented_tetrahedron": {
             "abc": (1, 1 - 1.5e-11, 1 - 1e-11),
             "related": lambda a, b, c: np.isclose(a, 1) and \
                 np.isclose((1 - b) / (1 - c), 1.5) and \
+                np.isclose(b, 1),
+        },
+        # edge: E0_EQ_E1_2
+        # angle: ONE_EQ_PAIR
+        # regular tetraaugmented tetrahedron
+        "tetraaugmented_tetrahedron_alt1": {
+            "abc": (1, -1 - 1.5e-11, -1 - 1e-11),
+            "related": lambda a, b, c: np.isclose(a, 1) and \
+                np.isclose((1 + b) / (1 + c), 1.5) and \
+                np.isclose(b, 1),
+        },
+        # edge: E0_EQ_E3_4
+        # angle: ONE_EQ_PAIR
+        # regular tetraaugmented tetrahedron
+        "tetraaugmented_tetrahedron_alt2": {
+            "abc": (1 + 2e-11, 1 - 1e-11, 1),
+            "related": lambda a, b, c: np.isclose(a, 1) and \
+                np.isclose((-1 + a) / (1 - b), 2) and \
+                np.isclose(b, 1),
+        },
+        # edge: E0_EQ_E1_2
+        # angle: ONE_EQ_PAIR
+        # regular tetraaugmented tetrahedron
+        "tetraaugmented_tetrahedron_alt3": {
+            "abc": (-1 + 2e-11, - 1 - 1e-11, 1),
+            "related": lambda a, b, c: np.isclose(a, 1) and \
+                np.isclose((1 + a) / (-1 - b), 2) and \
                 np.isclose(b, 1),
         },
         # edge: GENERAL
@@ -922,44 +963,49 @@ class SpecialTetartoids:
         "triakis_tetrahedron": {
             "abc": (1 + 1e-11, 1, 1 - 1e-11)
         },
-        # -----------------------------------------------------------
-        # TODO CONTINUE HERE: make sure to save the JSON file
+        # edge: GENERAL
+        # angle: TWO_EQ_PAIRS
+        "degenerate_faceting_tetrahedron": {
+            "abc": (1, 1 + 1e-8, 1 - 1e-8)
+        },
+        # edge: E1_2_EQ_E3_4
+        # angle: TWO_EQ_PAIRS
+        "rhombic_dodecahedron": {
+            "abc": (0, 1e-11, 1)
+        },
+        # edge: GENERAL
+        # angle: ONE_EQ_PAIR
+        "tetrahedron_of_kites": {
+            "abc": (1e-11, 1e-11, 1)
+        },
         # edge: E1_2_EQ_E3_4
         # angle: EQ_PAIR_AND_TRIPLE
-        # should be 1, lim x->0: x, x
         "3_crossing_lines": {
             # degenerate
             "abc": (1, 1e-14, 1e-14),
             # TODO: b can have any value
         },
-        # edge: E0_EQ_E3_4
-        # angle: ONE_EQ_PAIR
-        # Each side consists of triangles meeting in the side centre
-        "almost_tetrahedron_1": {
-            "abc": (1, 1 - 1e-10, 1)
-        },
-        "almost_tetrahedron_1_alt": {
-            # abc = 1, lim x↓1 x, 1
-            "abc": (1, 1 + 1e-10, 1)
-        },
-        # edge: E0_EQ_E1_2 (δ = 2.7e-11)
-        # angle: ONE_EQ_PAIR (δ = 4.5e-10)
-        # Four tetrahedra on one tetrahedron
-        "four_tetras_alt": {
-            "abc": (1, -1 - 1.5e-11, -1 - 1e-11),
-            "related": lambda a, b, c: np.isclose(a, 1) and \
-                np.isclose((1 + b) / (1 + c), 1.5) and \
-                np.isclose(b, -1),
-        },
 
         # ######################################################
-        # Other
+        # Equilateral but:
+        # - not uniform
+        # - no singularity
+        # - no pyritohedron
         # ######################################################
         # edge: ALL_EQ
         # angle: EQ_PAIR_AND_TRIPLE
         "extended_regular_dodecahedron": {
             "abc": (0, 1, -tau),
         },
+
+        # ######################################################
+        # Pyritohedra
+        # ######################################################
+
+        # ######################################################
+        # OPTIMIZATIONS
+        # ######################################################
+
         # edge: GENERAL
         # angle: TWO_EQ_PAIRS
         # A whole series for which a=1, 0 < b=c < 1
@@ -967,6 +1013,8 @@ class SpecialTetartoids:
             "abc": (1, 0.8, 0.8),
             "related": lambda a, b, c: np.isclose(a, 1) and np.isclose(b, c) and -1 < b < 1,
         },
+        # edge: E0_EQ_E1_2
+        # angle: GENERAL
         "pentaspikes": {
             "start_with": (0.4, 0.8, 2.0),
             "optimize_for": {
@@ -974,6 +1022,8 @@ class SpecialTetartoids:
                 "eq_edge_len": [1],
             },
         },
+        # edge: E0_EQ_E1_2
+        # angle: GENERAL
         "almost_bilateral": {
             "start_with": (0.4, 0.8, 2.0),
             "optimize_for": {
@@ -981,6 +1031,8 @@ class SpecialTetartoids:
                 "eq_edge_len": [1],
             },
         },
+        # edge: GENERAL
+        # angle: ONE_EQ_PAIR
         "v_shape_face_self_intersect_butterfly": {
             # Local minimum (delta = 1.9)
             # With method Nelder-Mead / SLSQP a regular dodecahedron is obtained
@@ -1069,7 +1121,7 @@ class SpecialTetartoids:
         # edge: E0_EQ_E1_E2
         # angle: GENERAL
         # δ = 0.0
-        "classic_tetartoid": {
+        "classic_tetartoid_eq_edge": {
             # "abc": (1, -3.671535138208082, -9.339026119964645),
             "start_with": (0.4, 0.8, 2),
             "optimize_for": {
@@ -1088,6 +1140,8 @@ class SpecialTetartoids:
                 "eq_edge_len": [1],
             },
         },
+        # edge: GENERAL
+        # angle: ONE_EQ_PAIR
         "self_inters_face_pyramids_0": {
             "start_with": (1, 0.53, 0.73),
             "optimize_for": {
@@ -1095,6 +1149,8 @@ class SpecialTetartoids:
                 "eq_angle": [(3, 4), ],
             },
         },
+        # edge: GENERAL
+        # angle: ONE_EQ_PAIR
         "like_52nd_ico_stellation_0": {
             "start_with": (1, 3.0, 2.7),
             "optimize_for": {
@@ -1133,6 +1189,8 @@ class SpecialTetartoids:
                 "eq_angle": [(3, 4), (0, 1)],
             },
         },
+        # edge: GENERAL
+        # angle: ONE_EQ_PAIR
         "twist": {
             # local minimum: delta 1.5
             "start_with": (0.2, 0.4, 1),
@@ -1337,12 +1395,19 @@ if __name__ == "__main__":
     if args.named_set:
         NAMED_SET_MAP[args.named_set](output_dir)
     else:
+        name = args.tetartoid
         if args.abc:
             tetartoid = Tetartoid(*args.abc)
-            name = "tetartoid"  # TODO add argument for name
+            name = "tetartoid"  # TODO add argument for output name
+        elif "abc" in SpecialTetartoids.opt_setup[name]:
+            tetartoid = Tetartoid(*SpecialTetartoids.opt_setup[name]["abc"])
         else:
-            tetartoid = Tetartoid(*SpecialTetartoids.opt_setup[args.tetartoid]["abc"])
             name = args.tetartoid
+            tetartoid = OptimalTetartoid(
+                SpecialTetartoids.opt_setup[name]["start_with"],
+                SpecialTetartoids.opt_setup[name]["optimize_for"],
+                name=name,
+            )
         tetartoid.log_properties()
         tetartoid.save_json(output_dir / f"{name}.json")
 
