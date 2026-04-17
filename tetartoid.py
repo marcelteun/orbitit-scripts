@@ -35,10 +35,6 @@ class AngleCat(IntEnum):
     ALL_EQ = auto()  # all angles are the same
 
 LOGGER = logging.getLogger("tetartoid")
-logging.basicConfig(
-    format="%(levelname)s: %(message)s",
-    level=logging.INFO,
-)
 DESCR = """Generate Orbitit JSON files for a tetartoid polyhedron.
 
 A tetartoid is a dodecahedron of 5 pentagons. The whole model has at least the rotation symmetries
@@ -107,7 +103,7 @@ def get_edge_angles(face) -> list[float]:
     result = [
         np.arccos(
             np.clip(
-                np.dot(edges[i], edges[(i + 1) % no_of_vs]) / (
+                np.dot(edges[(i + 1) % no_of_vs], edges[i]) / (
                     edge_lengths[i] * edge_lengths[(i + 1) % no_of_vs]
                 ), -1, 1
             )
@@ -480,7 +476,7 @@ class Tetartoid():
 class OptimalTetartoid(Tetartoid):
 
     valid_eq_edge_len = (0, 1, 2, 3)
-    valid_eq_angle = (0, 1, 2, 3, 4)
+    valid_vertex_i = (0, 1, 2, 3, 4)
     try_methods = ("Powell", "Nelder-Mead", "COBYQA", "BFGS", "SLSQP")
 
     def __init__(self, init_abc, optimize_for, name=""):
@@ -490,7 +486,7 @@ class OptimalTetartoid(Tetartoid):
         init_abc: a tuple with the initial values for 'a', 'b' and 'c', see
             https://en.wikipedia.org/wiki/Dodecahedron#Tetartoid
         optimize_for: a dictionary configuring the optimizer. It can have the following fields:
-            'optimizer': the name of the optimizer, see scipy minimize
+            'method': the name of the optimizer, see scipy minimize
             'opt_i': specify which indices in init_abc should be optimized
             'eq_edge_len': This parameter will instruct the optimizer to strive for edges with
                 equal lengths. For a Tetartoid holds that the edges between vertex 1 and 2 and 2 and
@@ -507,8 +503,8 @@ class OptimalTetartoid(Tetartoid):
                 Later a the following special value was added:
                 3: Try make edges 1 and 2 having the same length as edges 3 and 4.
             'eq_angle': This parameter instructs the optimizer to strive for a equal angles between
-                the sides at certain vertices. It is a list of two tuple with two vertex indices
-                specifying which angles should be equal.
+                the sides at certain vertices. It is a list of vertex indices at which the angle
+                should be equal
         name: will be used as Shape name
         """
         if "eq_edge_len" not in optimize_for:
@@ -525,10 +521,10 @@ class OptimalTetartoid(Tetartoid):
                     f"Expected one of {self.valid_eq_edge_len} for 'eq_edge_len' parameter, got "
                     f"{value}"
                 )
-        for i0, i1 in optimize_for["eq_angle"]:
-            if i0 not in self.valid_eq_angle or i1 not in self.valid_eq_angle:
+        for v_i, v_j in optimize_for["eq_angle"]:
+            if v_i not in self.valid_vertex_i or v_j not in self.valid_vertex_i:
                 raise ValueError(
-                    f"Expected one of {self.valid_eq_angle} for eq_angle tuple, got {i0}, {i1}"
+                    f"eq_angle indices must be in {self.valid_vertex_i} got ({v_i}, {v_j})"
                 )
         if len(init_abc) != 3:
             raise ValueError(
@@ -577,13 +573,15 @@ class OptimalTetartoid(Tetartoid):
         # Similarly:
         # If |e0| == |e3| (== |e4|)
         # Then preferably the angles (e3, e4) == (e4, e0)
-        angle_diff = 0
+        tot_angle_diff = 0
         for i0, i1 in self.optimize["eq_angle"]:
             angles = get_edge_angles(face)
-            angle_diff += np.abs(angles[i0] - angles[i1])
+            angle_diff = np.abs(angles[i0] - angles[i1])
+            tot_angle_diff += angle_diff
+            logging.debug("Angle diff at vertex %i and %i: %0.3e", i0, i1, angle_diff)
         # use a factor to increase the importance of the angle. TODO: use a parameter
         angle_factor = 180 / np.pi
-        return delta_edge_len + angle_factor * angle_diff
+        return delta_edge_len + angle_factor * tot_angle_diff
 
     def calc_x(self):
         """Find a tetartoid a, b, c configuration for the current setup.
@@ -1054,7 +1052,7 @@ class SpecialTetartoids:
                 "opt_i": (0, 1),
                 "method": OptimalTetartoid.try_methods[1],
                 "eq_edge_len": [1],
-                "eq_angle": [(0, 4), ],
+                "eq_angle": [(4, 0)],
             },
         },
         # Again? TODO: check
@@ -1077,7 +1075,7 @@ class SpecialTetartoids:
                 "opt_i": (0, 1),
                 "method": OptimalTetartoid.try_methods[1],
                 "eq_edge_len": [2],
-                "eq_angle": [(0, 4), ],
+                "eq_angle": [(4, 0)],
             },
         },
         # edge: GENERAL
@@ -1096,7 +1094,7 @@ class SpecialTetartoids:
             "optimize_for": {
                 "opt_i": (0, 1),
                 "eq_edge_len": [1],
-                "eq_angle": [(0, 4), ],
+                "eq_angle": [(4, 0)],
             },
         },
         "spiky_butterfly": {
@@ -1104,7 +1102,7 @@ class SpecialTetartoids:
             "start_with": (0.2, 0.4, 1),
             "optimize_for": {
                 "opt_i": (0, 1),
-                "eq_angle": [(1, 2), (0, 4)],
+                "eq_angle": [(1, 2), (4, 0)],
             },
         },
         "4_point_star_self_inters": {
@@ -1113,7 +1111,7 @@ class SpecialTetartoids:
                 "opt_i": (1, 2),
                 #"method": OptimalTetartoid.try_methods[2],
                 "eq_edge_len": [1],
-                "eq_angle": [(3, 4), ],
+                "eq_angle": [(3, 4)],
             },
         },
         # The following ones come in many variations, since only one requirement is met:
@@ -1146,7 +1144,7 @@ class SpecialTetartoids:
             "start_with": (1, 0.53, 0.73),
             "optimize_for": {
                 "opt_i": (0, 1),
-                "eq_angle": [(3, 4), ],
+                "eq_angle": [(3, 4)],
             },
         },
         # edge: GENERAL
@@ -1156,7 +1154,7 @@ class SpecialTetartoids:
             "optimize_for": {
                 "opt_i": (1, 2),
                 "eq_edge_len": [1],
-                "eq_angle": [(3, 4), ],
+                "eq_angle": [(3, 4)],
             },
         },
         # edge: E0_EQ_E3_4
@@ -1190,13 +1188,13 @@ class SpecialTetartoids:
             },
         },
         # edge: GENERAL
-        # angle: ONE_EQ_PAIR
+        # angle:EQ_QUARTET
         "twist": {
             # local minimum: delta 1.5
-            "start_with": (0.2, 0.4, 1),
+            "start_with": (1.6, 0.1, 1),
             "optimize_for": {
                 "opt_i": (0, 1),
-                "eq_angle": [(3, 4), (0, 2)],
+                "eq_angle": [(2, 3), (3, 4)],
             },
         },
     }
@@ -1267,6 +1265,26 @@ class SpecialTetartoids:
 
 
 if __name__ == "__main__":
+    def vertex_pair(pair):
+        """Convert one pair of vertex numbers, separated by a ',' only.
+
+        The integers must be vertex numbers from [0, 4]
+        """
+        vertices = pair.split(',')
+        # TODO: support more than pairs later
+        if len(vertices) != 2:
+            raise argparse.ArgumentTypeError(f"Vertex numbers must be pairs, got {pair}")
+        try:
+            result = int(vertices[0]), int(vertices[1])
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"expecting a pair of integers, got {vertices}")
+        domain = list(range(5))
+        for index in result:
+            if index not in domain:
+                raise argparse.ArgumentTypeError(f"Expecting a number from [0,4] got {index}")
+        return result
+
+
     groups = list(NAMED_SET_MAP.keys())
     groups.append("pyritohedra")
     groups.append("uniform polyhedra")
@@ -1296,9 +1314,65 @@ if __name__ == "__main__":
         metavar="NAME",
         help=f"Named set of tetartoids. Should be one of {groups}",
     )
+    parser.add_argument(
+        "--optimize_method",
+        "-m",
+        choices=OptimalTetartoid.try_methods,
+        help="If specified then a defined tetartoid is optimized further using the specified "
+        "method. The optimizer will not be run on the tetartoids in a named set (--named_set).",
+    )
+    parser.add_argument(
+        "--eq_edge_len",
+        "-e",
+        choices=list(range(4)),
+        default=0,
+        help="This parameter states what to optimize for regarding edge lengths "
+        "'0' means that the edge lengths aren't optimized; "
+        "'1' means that the length of edge '0' is optimized to be close to edges 1 and 2, "
+        "while '2' means that the length of edge '0' is optimized to be close to edges 3 and 4. "
+        "'3' tries to make edges 1 and 2 having the same length as 3 and 4.",
+    )
+    parser.add_argument(
+        "--eq_angle",
+        "-a",
+        type=vertex_pair,
+        metavar="vi,vj",
+        nargs="*",
+        help="This parameter instructs the optimizer to strive for a equal angles between "
+        "the sides at certain vertices. It is a list of two tuples with two vertex indices "
+        "specifying which angles should be equal. Each pair consists of two vertex indices "
+        "separated by one comma only, i.e. no spaces. "
+        "E.g. '2,3' means that the difference between the angles at vertex 0 and vertex 3 should "
+        "minimized.",
+    )
+    parser.add_argument(
+        "--var_a",
+        action="store_true",
+        help="When optimizing specify this if the optimizer can vary the value of a.",
+    )
+    parser.add_argument(
+        "--var_b",
+        action="store_true",
+        help="When optimizing specify this if the optimizer can vary the value of b.",
+    )
+    parser.add_argument(
+        "--var_c",
+        action="store_true",
+        help="When optimizing specify this if the optimizer can vary the value of c.",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Add more lgging: add debug level",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.outdir) if args.outdir else Path(".")
+    logging.basicConfig(
+        format="%(levelname)s: %(message)s",
+        level=logging.DEBUG if args.verbose else logging.INFO,
+    )
 
     #t = TetartoidOneReq(a=1, b=1.1)
     #t = TetartoidOneReq(b=1, c=1.1)
@@ -1408,6 +1482,29 @@ if __name__ == "__main__":
                 SpecialTetartoids.opt_setup[name]["optimize_for"],
                 name=name,
             )
+
+        if args.optimize_method:
+            LOGGER.info("Properties before optimizing")
+            tetartoid.log_properties()
+            opt_i = []
+            if args.var_a:
+                opt_i.append(0)
+            if args.var_b:
+                opt_i.append(1)
+            if args.var_c:
+                opt_i.append(2)
+            optimize_for = {
+                # TODO:
+                "method": args.optimize_method,
+                "opt_i": tuple(opt_i),
+                # TODO: rm list?
+                "eq_edge_len": [args.eq_edge_len],
+                # TODO: why use a pair, just specify vertex no.
+                "eq_angle": args.eq_angle,
+            }
+            LOGGER.debug("optmize for %s", optimize_for)
+            tetartoid = OptimalTetartoid(tetartoid.abc, optimize_for, name="test")
+
         tetartoid.log_properties()
         tetartoid.save_json(output_dir / f"{name}.json")
 
