@@ -81,6 +81,10 @@ def tetar_face(a, b, c, e1, e2):
 
 
 def get_edges(face):
+    """Return one edge vector for each edge.
+
+    The edge with index 'i' is from vertex 'i' to vertex 'i+1'.
+    """
     f_len = len(face)
     return [
         face[i] - face[(i + 1) % f_len]
@@ -88,7 +92,11 @@ def get_edges(face):
     ]
 
 
-def get_edge_lengths(edges) -> list[float]:
+def get_edge_lengths(edges):
+    """Calculate the length of each edge vector
+
+    Return: an numpy array array of floats.
+    """
     return np.linalg.norm(edges, axis=1).tolist()
 
 
@@ -103,7 +111,8 @@ def get_edge_angles(face) -> list[float]:
     result = [
         np.arccos(
             np.clip(
-                np.dot(edges[(i + 1) % no_of_vs], edges[i]) / (
+                # Note use -edge of one of them: they should both be pointing away from the vertex
+                np.dot(edges[(i + 1) % no_of_vs], -edges[i]) / (
                     edge_lengths[i] * edge_lengths[(i + 1) % no_of_vs]
                 ), -1, 1
             )
@@ -161,6 +170,19 @@ class Tetartoid():
                 "col_alt": 2,  # note 0 based
             }
         }
+        if np.isclose(self.n, 0):
+            LOGGER.warning("Singularity for a, b, c = %0.4f, %0.4f, %0.4f", a, b, c)
+            LOGGER.warning("Check whether a ~= b ~= c")
+            LOGGER.warning("Check whether bc/a^2 = %0.4f ~= 1", (b * c) / a**2)
+            LOGGER.warning("Check whether a ~= 0 and b ~= 0")
+            LOGGER.warning("Check whether c ~= 0")
+            raise ValueError(f"n = {self.n} ~= 0")
+        if self.d1 == 0:
+            # TODO: add more info like above
+            raise ValueError("d1 == 0")
+        if self.d2 == 0:
+            # TODO: add more info like above
+            raise ValueError("d2 == 0")
         assert self.n * self.d1 * self.d2 != 0
 
     @property
@@ -180,7 +202,7 @@ class Tetartoid():
         return tetar_d2(self.a, self.b, self.c)
 
     @property
-    def face(self):
+    def face(self) -> np.array:
         """Return one face of a tetartoid."""
         e1 = self.n / self.d1
         e2 = self.n / self.d2
@@ -394,6 +416,7 @@ class Tetartoid():
                 LOGGER.info("There are two different edge lengths")
                 LOGGER.info("Edge lengths 0, 1, 2 are %0.10f", edge_lengths[0])
                 LOGGER.info("Edge lengths 3, 4 are %0.10f", edge_lengths[3])
+                LOGGER.info("Where edge 'i' is from vertex[i] -> vertex[i+1]")
                 LOGGER.info(
                     "difference for 0 is %0.1e",
                     np.abs(edge_lengths[0] - edge_lengths[1]),
@@ -592,18 +615,17 @@ class OptimalTetartoid(Tetartoid):
         Return: the tuple a, b, c for which the minimum was found.
         """
         result = minimize(self.value_to_minimize, self._try_abc, method=self.optimize["method"])
-        print(result)
-        if not result.success:
+        LOGGER.info(result)
+        success = result.success and result.fun < 1e-8
+        if not success:
             LOGGER.warning("Not really converged, error %e", result.fun)
         else:
             LOGGER.info("Converged, minimum delta %e", result.fun)
-        # Check whether the result.fun is close to 0:
-        # We can have reached a minimum, but we required it to be close to 0
-        # FIXME
-        success = result.success or result.fun < 1e-8
-        assert success, "Couldn't find 'x' try other input values"
         return result.x
 
+
+# Don't copy A, B, C values
+# FIXME: get the standard definitions from opt_set.
 
 def generate_uniform(outdir: Path):
     """Generate tetartoids with faces or sides that give rise to uniform polyhedra.
@@ -640,6 +662,7 @@ def generate_pyritohedra(outdir: Path):
     δ = [1e-3, 1e-2]
     big = 4000
     tetartoids = {
+        # Note these can all be scaled to (0, 1, ..)
         "rhombic_dodecahedron": (0, TAU2, big),
         "pyritohedron_slim_pentagons": (0, TAU2, TAU2**2 + 5),
         "regular_dodecahedron": (0, TAU2, TAU2**2),
@@ -668,6 +691,53 @@ def generate_equilateral(outdir: Path):
         "extended_regular_dodecahedron": (0, 1, -TAU),
         "endododecahedron": (0, TAU2, TAU),
         "rhombic_dodecahedron": (0, 1e-11, 1),
+    }
+    for filename, abc_values in tetartoids.items():
+        Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
+
+
+def generate_others(outdir: Path):
+    """Generate tetartoids using abc related to golden ratio."""
+    tetartoids = {
+        # -------------------------
+        # Related to golden ratio
+        # -------------------------
+        # (0, 1, τ): "pyritohedron_wide_pentagons"
+        # (0, τ, 1): "endododecahedron"
+        # (1, τ, ξ): singular point. with ξ -> 0: 6 lines
+        "twisted_extra": (1, 0, TAU),
+        # (τ, 1, ξ): singular point. with ξ -> 0: 3 lines
+        # (τ, 0, ξ): singular point. with ξ -> 0: 3 lines
+        # (0, τ, ξ): singular point. with ξ -> 0: 3 lines
+        "twist": (TAU, 0, 1),
+        # cube with triangles sticking out: (τ, 1, 1)
+        # "twisted_caltrop": (1, τ, 1),  # quite nice, but general
+        # "twisted_caltrop": (1, 1, τ),  # tetrahedron of quadrilaterals
+        # (τ, 1, τ-1): thorny twisted
+        # (τ-1, 1, τ): classical tetartoid
+        # (0, 1, τ+1): "regular_dodecahedron"
+        # (0, 1+1, τ): "great_stellated_dodecahedron"
+        # (1, 0, τ+1): hats general, general
+        # (τ+1, 0, 1): hats self-intersect, angle: ONE_EQ_PAIR
+
+        # -------------------------
+        # E1_2_EQ_E3_4
+        # -------------------------
+        # There are many of these:
+        # Just vary c from (1, 3)
+        "sperm_whale": (1, 0.897128057685865, 1.2),
+
+        # -------------------------
+        # E0_EQ_E1_2,
+        # Angle: ONE_EQ_PAIR
+        # -------------------------
+        "hats": (1, 0, -0.444095920388923),
+
+        # -------------------------
+        # edge: GENERAL
+        # angle: GENERAL
+        # -------------------------
+        "classic_tetartoid": (1, 2, 5),
     }
     for filename, abc_values in tetartoids.items():
         Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
@@ -838,6 +908,7 @@ NAMED_SET_MAP = {
     "pyritohedra": generate_pyritohedra,
     "uniform polyhedra": generate_uniform,
     "equilateral polyhedra": generate_equilateral,
+    "others": generate_others,
     # singularities when c = 0
     # ------------------------
     "a=b=c": generate_at_singularity_case_n_1,
@@ -858,7 +929,6 @@ class SpecialTetartoids:
 
     Special properties occur e.g. when edges get the same length and / or angle between sides.
     """
-    tau = (np.sqrt(5) + 1) / 2
     # The dictionary describes tetartoids for which angles and / or edge length become equal.
     # Some of these occur while approaching a singularity
     # TODO: use class attribute for the offset in the singularities.
@@ -869,12 +939,12 @@ class SpecialTetartoids:
         # edge: ALL_EQ
         # angle: ALL_EQ
         "regular_dodecahedron": {
-            "abc": (0, 1, tau + 1),
+            "abc": (0, 1, TAU2),
         },
         # edge: ALL_EQ
         # angle: ALL_EQ
         "great_stellated_dodecahedron": {
-            "abc": (0, tau + 1, 1),
+            "abc": (0, TAU2, 1),
         },
         # edge: ALL_EQ
         # angle: TWO_EQ_PAIRS
@@ -993,7 +1063,7 @@ class SpecialTetartoids:
         # edge: ALL_EQ
         # angle: EQ_PAIR_AND_TRIPLE
         "extended_regular_dodecahedron": {
-            "abc": (0, 1, -tau),
+            "abc": (0, 1, -TAU),
         },
 
         # ######################################################
@@ -1118,7 +1188,6 @@ class SpecialTetartoids:
         # ------------------------------------------------------------
         # edge: E0_EQ_E1_E2
         # angle: GENERAL
-        # δ = 0.0
         "classic_tetartoid_eq_edge": {
             # "abc": (1, -3.671535138208082, -9.339026119964645),
             "start_with": (0.4, 0.8, 2),
@@ -1129,7 +1198,6 @@ class SpecialTetartoids:
         },
         # edge: E0_EQ_E3_E4
         # angle: GENERAL
-        # δ = 3.5e-15
         "classic_tetartoid_1": {
             # "abc": (1, 3.615386818341456, 9.196464579601590),
             "start_with": (0.4, 0.8, 2),
@@ -1190,12 +1258,12 @@ class SpecialTetartoids:
         # edge: GENERAL
         # angle:EQ_QUARTET
         "twist": {
-            # local minimum: delta 1.5
-            "start_with": (1.6, 0.1, 1),
-            "optimize_for": {
-                "opt_i": (0, 1),
-                "eq_angle": [(2, 3), (3, 4)],
-            },
+            "abc": (TAU, 0, 1),
+            #"start_with": (1.6, 0.1, 1),
+            #"optimize_for": {
+            #    "opt_i": (0, 1),
+            #    "eq_angle": [(2, 3), (3, 4)],
+            #},
         },
     }
 
@@ -1297,6 +1365,11 @@ if __name__ == "__main__":
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
+        "--named_set",
+        metavar="NAME",
+        help=f"Named set of tetartoids. Should be one of {groups}",
+    )
+    group.add_argument(
         "--abc",
         nargs=3,
         type=float,
@@ -1309,10 +1382,11 @@ if __name__ == "__main__":
         help="The name of a predefined tetartoid, must be one of "
         f"{list(SpecialTetartoids.opt_setup.keys())}",
     )
-    group.add_argument(
-        "--named_set",
-        metavar="NAME",
-        help=f"Named set of tetartoids. Should be one of {groups}",
+    parser.add_argument(
+        "--model_name",
+        help="Use this for the resulting tetartoid name. "
+        "This option will be ignored when generating a named set (--named_set), "
+        "but it will be used to overwrite the name from --tetartoid if this is used.",
     )
     parser.add_argument(
         "--optimize_method",
@@ -1324,13 +1398,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--eq_edge_len",
         "-e",
-        choices=list(range(4)),
+        choices=list(range(5)),
         default=0,
+        type=int,
         help="This parameter states what to optimize for regarding edge lengths "
         "'0' means that the edge lengths aren't optimized; "
         "'1' means that the length of edge '0' is optimized to be close to edges 1 and 2, "
         "while '2' means that the length of edge '0' is optimized to be close to edges 3 and 4. "
-        "'3' tries to make edges 1 and 2 having the same length as 3 and 4.",
+        "'3' tries to make edges 1 and 2 having the same length as 3 and 4."
+        "'4' means all edges should have equal length.",
     )
     parser.add_argument(
         "--eq_angle",
@@ -1338,6 +1414,7 @@ if __name__ == "__main__":
         type=vertex_pair,
         metavar="vi,vj",
         nargs="*",
+        default=[],
         help="This parameter instructs the optimizer to strive for a equal angles between "
         "the sides at certain vertices. It is a list of two tuples with two vertex indices "
         "specifying which angles should be equal. Each pair consists of two vertex indices "
@@ -1365,6 +1442,12 @@ if __name__ == "__main__":
         "--verbose",
         action="store_true",
         help="Add more lgging: add debug level",
+    )
+    parser.add_argument(
+        "-U",
+        "--skip_unify",
+        action="store_true",
+        help="Don't unifying the result by trying to scale 'a' to 1.",
     )
     args = parser.parse_args()
 
@@ -1413,8 +1496,7 @@ if __name__ == "__main__":
     # start_with = (1., x, x)
 
     # Try:
-    tau = (np.sqrt(5) + 1) / 2
-    #start_with = (0., 1.0, -tau)
+    #start_with = (0., 1.0, -TAU)
     start_with = (1, 2.3, 1.3)
     start_with = (1, 3.0, 2.7)
     start_with = (1.1, 0., 2.0)
@@ -1461,27 +1543,33 @@ if __name__ == "__main__":
     # very spiky: abc = 0.0, 3, 1.6
     # At 0, 3, 1.5 d1 = 0 -> singular point
     # leads to almost Great stellated dodecahedron: find out when that is happening..
-    abc = 0, tau + 1, 1e-4
+    abc = 0, TAU2, 1e-4
 
     # d1 = 0
     abc = -2e-2, 0, 1
 
     if args.named_set:
         NAMED_SET_MAP[args.named_set](output_dir)
-    else:
-        name = args.tetartoid
+    else:  # either abc is specified or tetartoid is specified
+        name = "tetartoid"
+        if args.model_name:
+            name = args.model_name
         if args.abc:
-            tetartoid = Tetartoid(*args.abc)
-            name = "tetartoid"  # TODO add argument for output name
-        elif "abc" in SpecialTetartoids.opt_setup[name]:
-            tetartoid = Tetartoid(*SpecialTetartoids.opt_setup[name]["abc"])
+            tetartoid = Tetartoid(*args.abc, name=name)
         else:
-            name = args.tetartoid
-            tetartoid = OptimalTetartoid(
-                SpecialTetartoids.opt_setup[name]["start_with"],
-                SpecialTetartoids.opt_setup[name]["optimize_for"],
-                name=name,
-            )
+            org_name = args.tetartoid
+            if name == "tetartoid":
+                name = org_name
+            if org_name not in SpecialTetartoids.opt_setup:
+                raise ValueError(f"No predefined tetartoid '{org_name}' found")
+            if "abc" in SpecialTetartoids.opt_setup[org_name]:
+                tetartoid = Tetartoid(*SpecialTetartoids.opt_setup[org_name]["abc"], name=org_name)
+            else:
+                tetartoid = OptimalTetartoid(
+                    SpecialTetartoids.opt_setup[org_name]["start_with"],
+                    SpecialTetartoids.opt_setup[org_name]["optimize_for"],
+                    name=args.tetartoid,
+                )
 
         if args.optimize_method:
             LOGGER.info("Properties before optimizing")
@@ -1493,18 +1581,21 @@ if __name__ == "__main__":
                 opt_i.append(1)
             if args.var_c:
                 opt_i.append(2)
+            if args.eq_edge_len == 4:
+                eq_edge_len = [1, 2]
+            else:
+                eq_edge_len = [args.eq_edge_len]
             optimize_for = {
-                # TODO:
                 "method": args.optimize_method,
                 "opt_i": tuple(opt_i),
-                # TODO: rm list?
-                "eq_edge_len": [args.eq_edge_len],
-                # TODO: why use a pair, just specify vertex no.
+                "eq_edge_len": eq_edge_len,
                 "eq_angle": args.eq_angle,
             }
             LOGGER.debug("optmize for %s", optimize_for)
-            tetartoid = OptimalTetartoid(tetartoid.abc, optimize_for, name="test")
+            tetartoid = OptimalTetartoid(tetartoid.abc, optimize_for, name=name)
 
+        if not args.skip_unify:
+            tetartoid.unify()
         tetartoid.log_properties()
         tetartoid.save_json(output_dir / f"{name}.json")
 
