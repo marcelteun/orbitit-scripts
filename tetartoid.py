@@ -767,8 +767,8 @@ def generate_others(outdir: Path):
         # edge: E0_EQ_E1_2 / E0_EQ_E3_4
         # angle: TWO_EQ_PAIRS
         # -------------------------
-        "mountain_twin": (1, 0.484454027365491, 1.274316689395054),
-        "mountain_high_low": (1, 0.210137975747359, 2.484458045095460),
+        "mountain_twin": (1, 0.484454397937393, 1.274316085206068),
+        "mountain_high_low": (1, 0.210138382347362, 2.484453644478803),
 
         # -------------------------
         # edge: GENERAL
@@ -1192,28 +1192,28 @@ class SpecialTetartoids:
         },
         # edge: E0_EQ_E1_2
         # angle: TWO_EQ_PAIRS
-        # TODO: there is one option here to get the o3 vertices with the same radius
-        #       eg a,b,c = 1, 0.466857278756888, 1.304419759686907
         "mountain_high_low": {
-            # "abc": (1, 0.210137975747359, 2.484458045095460),
-            "start_with": (1., 0.210138278109585, 2.484461652493819),
+            # resulting "abc": (1, 0.210138382347362, 2.484453644478803)
+            "start_with": (1., 0.2101, 2.484),
             "optimize_for": {
                 "opt_i": (0, 1),
                 "method": OptimalTetartoid.try_methods[0],
                 "eq_edge_len": [1],
                 "eq_angle": [(0, 4), (1, 3)],
+                "eq_o3_radius": True,
             },
         },
         # edge: E0_EQ_E3_4
         # angle: TWO_EQ_PAIRS
         "mountain_twin": {
-            # "abc": (1, 0.484454027365491, 1.274316689395054),
+            # resulting "abc": (1, 0.484454397937393, 1.274316085206068),
             "start_with": (1, 0.484454027157523, 1.274316688874315),
             "optimize_for": {
                 "opt_i": (0, 1),
                 "method": OptimalTetartoid.try_methods[1],
                 "eq_edge_len": [2],
                 "eq_angle": [(4, 0)],
+                "eq_o3_radius": True,
             },
         },
         # edge: GENERAL (only)
