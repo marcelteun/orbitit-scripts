@@ -1245,6 +1245,18 @@ class SpecialTetartoids:
                 "eq_angle": [(0, 1)],
             },
         },
+        # edge: GENERAL (only)
+        # angle: ONE_EQ_PAIR (only)
+        # eq_o3_radius
+        "tetra_drill_head": {
+            "start_with": (1, 2, 1.249),
+            "optimize_for": {
+                "opt_i": (2,),
+                "method": "Powell",
+                "eq_angle": [(1, 3)],
+                "eq_o3_radius": True,
+            },
+        },
         "spiky_butterfly": {
             # local minimum: (minimum = 8°)
             "start_with": (0.2, 0.4, 1),
@@ -1259,7 +1271,6 @@ class SpecialTetartoids:
             "start_with": (1, 2.3, 1.3),
             "optimize_for": {
                 "opt_i": (1, 2),
-                #"method": OptimalTetartoid.try_methods[2],
                 "eq_edge_len": [1],
                 "eq_angle": [(3, 4)],
             },
