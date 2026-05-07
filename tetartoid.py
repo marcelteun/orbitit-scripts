@@ -596,9 +596,10 @@ class OptimalTetartoid(Tetartoid):
 
     def value_to_minimize(self, values):
         """The is the method, for which the result is minimized by SciPy's minimize."""
-        logging.debug("Trying a, b, c = %s", values)
-        for i in self.optimize["opt_i"]:
-            self._try_abc[i] = values[i]
+        logging.debug("Trying new input %s", values)
+        for i, abc_index in enumerate(self.optimize["opt_i"]):
+            self._try_abc[abc_index] = values[i]
+        logging.debug("Trying a, b, c = %s", self._try_abc)
 
         face = self._face
         delta_edge_len = 0
@@ -642,7 +643,8 @@ class OptimalTetartoid(Tetartoid):
 
         Return: the tuple a, b, c for which the minimum was found.
         """
-        result = minimize(self.value_to_minimize, self._try_abc, method=self.optimize["method"])
+        try_abc = tuple([self._try_abc[i] for i in self.optimize["opt_i"]])
+        result = minimize(self.value_to_minimize, try_abc, method=self.optimize["method"])
         LOGGER.info(result)
         success = result.success and result.fun < 1e-8
         if not success:
