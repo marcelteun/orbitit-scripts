@@ -354,7 +354,7 @@ class Tetartoid():
                 if i0 in eq_pairs[1] or j0 in eq_pairs[1]:
                     LOGGER.warning("Edge lengths: %s", edge_lengths)
                     LOGGER.warning("Angles (rad): %s", angles)
-                    raise ValueError("Undefined angle category triplets")
+                    LOGGER.error("The script needs a new angle category: triplets")
                 angle_cat = AngleCat.TWO_EQ_PAIRS
                 angle_spec = tuple(eq_pairs)
             case 3:
