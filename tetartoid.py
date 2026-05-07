@@ -171,6 +171,7 @@ class Tetartoid():
             }
         }
         if np.isclose(self.n, 0):
+            # TODO: split these through if statements and generate correct error message
             LOGGER.warning("Singularity for a, b, c = %0.4f, %0.4f, %0.4f", a, b, c)
             LOGGER.warning("Check whether a ~= b ~= c")
             LOGGER.warning("Check whether bc/a^2 = %0.4f ~= 1", (b * c) / a**2)
@@ -405,7 +406,14 @@ class Tetartoid():
         line = "-" * len(title)
         LOGGER.info(line)
         LOGGER.info(title)
-        LOGGER.info(line)
+        face = self.face
+        o3_vertex_0, o3_vertex_1 = face[2], face[4]
+        v0, v1 = np.abs(o3_vertex_0[0]), np.abs(o3_vertex_1[0])
+        if np.isclose(v0, v1):
+            LOGGER.info("The vertices on the 3-fold axis have similar radius:")
+            LOGGER.info("  - the x-coordinates are %0.3e apart", np.abs(v0 - v1))
+            LOGGER.info("  - %s vs. %s", o3_vertex_0, o3_vertex_1)
+
         if np.isnan(np.sum(angles)):
             LOGGER.warning(">>> Improper tetartoid <<<")
         LOGGER.info("A, B, C = %0.15f, %0.15f, %0.15f", self.a, self.b, self.c)
@@ -415,12 +423,12 @@ class Tetartoid():
             case EdgeCat.E0_EQ_E1_2:
                 LOGGER.info("There are two different edge lengths")
                 LOGGER.info("Edge lengths 0, 1, 2 are %0.10f", edge_lengths[0])
-                LOGGER.info("Edge lengths 3, 4 are %0.10f", edge_lengths[3])
-                LOGGER.info("Where edge 'i' is from vertex[i] -> vertex[i+1]")
                 LOGGER.info(
                     "difference for 0 is %0.1e",
                     np.abs(edge_lengths[0] - edge_lengths[1]),
                 )
+                LOGGER.info("Edge lengths 3, 4 are %0.10f", edge_lengths[3])
+                LOGGER.info("Note edge 'i' is from vertex[i] -> vertex[i+1]")
             case EdgeCat.E0_EQ_E3_4:
                 LOGGER.info("There are two different edge lengths")
                 LOGGER.info("Edge lengths 1, 2 are %0.10f", edge_lengths[1])
@@ -429,6 +437,7 @@ class Tetartoid():
                     "difference for 0 is %0.1e",
                     np.abs(edge_lengths[0] - edge_lengths[3]),
                 )
+                LOGGER.info("Note edge 'i' is from vertex[i] -> vertex[i+1]")
             case EdgeCat.E1_2_EQ_E3_4:
                 LOGGER.info("There are two different edge lengths")
                 LOGGER.info("Edge length 0 is %0.10f", edge_lengths[0])
@@ -437,6 +446,7 @@ class Tetartoid():
                     "The differences between 1 and 2, and 3 and 4 are %0.1e",
                     np.abs(edge_lengths[1] - edge_lengths[3]),
                 )
+                LOGGER.info("Note edge 'i' is from vertex[i] -> vertex[i+1]")
             case EdgeCat.ALL_EQ:
                 LOGGER.info("All edge lengths are %0.10f", edge_lengths[0])
                 LOGGER.info(
@@ -444,6 +454,7 @@ class Tetartoid():
                     np.abs(edge_lengths[0] - edge_lengths[1]),
                     np.abs(edge_lengths[0] - edge_lengths[3]),
                 )
+                LOGGER.info("Note edge 'i' is from vertex[i] -> vertex[i+1]")
             case EdgeCat.GENERAL:
                 LOGGER.info("There are three different edge lengths")
                 LOGGER.info("Edge length 0 is %0.10f", edge_lengths[0])
@@ -528,12 +539,17 @@ class OptimalTetartoid(Tetartoid):
             'eq_angle': This parameter instructs the optimizer to strive for a equal angles between
                 the sides at certain vertices. It is a list of vertex indices at which the angle
                 should be equal
+            'eq_o3_radius': optional key. If set to True then the optimiser will attempt to generate
+                a tetartoid for which all vertices on 3-fold axes have the same distance to the
+                centre of the model.
         name: will be used as Shape name
         """
         if "eq_edge_len" not in optimize_for:
             optimize_for["eq_edge_len"] = []
         if "eq_angle" not in optimize_for:
             optimize_for["eq_angle"] = []
+        if "eq_o3_radius" not in optimize_for:
+            optimize_for["eq_o3_radius"] = False
         if "opt_i" not in optimize_for:
             optimize_for["opt_i"] = (1, 2)
         if "method" not in optimize_for:
@@ -580,8 +596,9 @@ class OptimalTetartoid(Tetartoid):
 
     def value_to_minimize(self, values):
         """The is the method, for which the result is minimized by SciPy's minimize."""
-        for i, opt_i in enumerate(self.optimize["opt_i"]):
-            self._try_abc[opt_i] = values[i]
+        logging.debug("Trying a, b, c = %s", values)
+        for i in self.optimize["opt_i"]:
+            self._try_abc[i] = values[i]
 
         face = self._face
         delta_edge_len = 0
@@ -591,6 +608,8 @@ class OptimalTetartoid(Tetartoid):
             if i_j:
                 i, j = i_j
                 delta_edge_len += np.abs(edges[i] - edges[j])
+        if self.optimize["eq_edge_len"] != [0]:
+            logging.debug("Total edge diff: %0.3e", delta_edge_len)
         # If |e0| == |e1| (== |e2|)
         # Then preferably the angles (e0, e1) == (e1, e2)
         # Similarly:
@@ -601,10 +620,19 @@ class OptimalTetartoid(Tetartoid):
             angles = get_edge_angles(face)
             angle_diff = np.abs(angles[i0] - angles[i1])
             tot_angle_diff += angle_diff
-            logging.debug("Angle diff at vertex %i and %i: %0.3e", i0, i1, angle_diff)
+            logging.debug("  - Angle diff at vertex %i and %i: %0.3e", i0, i1, angle_diff)
+        if self.optimize["eq_angle"]:
+            logging.debug("Total angle diff: %0.3e", tot_angle_diff)
+            angle_factor = 180 / np.pi
+            logging.debug("With factor: %0.3e", angle_factor * tot_angle_diff)
+        d_o3_radius = 0
+        if self.optimize["eq_o3_radius"]:
+            # Vertex 2 and 4 are on a 3-fold axis, only check the x-coordinate (same sign)
+            d_o3_radius = np.abs(np.abs(face[2][0]) - np.abs(face[4][0]))
+            logging.debug("delta o3 radius X: %0.3e", d_o3_radius)
         # use a factor to increase the importance of the angle. TODO: use a parameter
         angle_factor = 180 / np.pi
-        return delta_edge_len + angle_factor * tot_angle_diff
+        return delta_edge_len + angle_factor * tot_angle_diff + d_o3_radius
 
     def calc_x(self):
         """Find a tetartoid a, b, c configuration for the current setup.
@@ -725,7 +753,9 @@ def generate_others(outdir: Path):
         # -------------------------
         # There are many of these:
         # Just vary c from (1, 3)
-        "sperm_whale": (1, 0.897128057685865, 1.2),
+        # Ran with varying c and any equal angle combination.
+        # For c = 3
+        "ladle_head": (1, 0.897128057685865, 1.2),
 
         # -------------------------
         # E0_EQ_E1_2,
@@ -734,10 +764,58 @@ def generate_others(outdir: Path):
         "hats": (1, 0, -0.444095920388923),
 
         # -------------------------
+        # edge: E0_EQ_E1_2 / E0_EQ_E3_4
+        # angle: TWO_EQ_PAIRS
+        # -------------------------
+        "mountain_twin": (1, 0.484454027365491, 1.274316689395054),
+        "mountain_high_low": (1, 0.210137975747359, 2.484458045095460),
+
+        # -------------------------
         # edge: GENERAL
         # angle: GENERAL
         # -------------------------
         "classic_tetartoid": (1, 2, 5),
+
+        # Almost mirrors, but only ONE_EQ_PAIR: TODO: can we make this with mirrors
+        # here it is angle 0, 2 that are equal, i.e. the obtuse angles (δ = 0.e00)
+        "almost_s4a4": (1, 2.299046757145047, 1.230821269413600),
+        # here it is angle 3 and 4 that are more or less equal: δ = 2e-14
+        "almost_s4a4_a_3_4": (1, 2.142405515787968, 1.230821269273440),
+        # Trying to get both angles the same:
+        # using the above with '-m Powell -a 0,2 3,4'
+        # also 1, 2.513876617371318, 1.345832919546370  # angle 3,4, and var_a
+        # also 1, 2.142405516031935, 1.230821269413600  # angle 3,4, and var_b
+        # also 1, 2.299046757145047, 1.278271504241379  # angle 3,4, and var_b
+        # 1, 2.299046757145047, 1.278271504129421  # using Nelder-Mead 129/125, 47.978920
+        # 1, 2.299046200836823, 1.278271504241379  # using COBYQA --var_b
+        # python tetartoid.py -o out/tmp/ -v --model_name caltrop_test_a34_a02 --abc 1  2.299046757145047 1.278271504241379 -m Nelder-Mead -a 0,2 3,4 --var_c --var_b
+        #
+        # Best so far:
+        # A, B, C = 1.000000000000000, 1.790456355510369, 1.132018409857059
+        # INFO: Angle at vertex no. 0 is 126.2736748534°
+        # INFO: Angle at vertex no. 1 is 33.2401724001°
+        # INFO: Angle at vertex no. 2 is 122.6376406578°
+        # INFO: Angle at vertex no. 3 is 51.0757436802°
+        # INFO: Angle at vertex no. 4 is 51.0757442312°
+        #
+        # And
+        # python tetartoid.py -o out/tmp/ -v --model_name caltrop_test_a34_a02 --abc 1  1.79 1.13 -m Powell -a 0,2 3,4 --var_c --var_b
+        # INFO: Angle at vertex no. 0 is 134.1116170053°
+        # INFO: Angle at vertex no. 1 is 1.3812661739°
+        # INFO: Angle at vertex no. 2 is 131.0781752334°
+        # INFO: Angle at vertex no. 3 is 43.2855292063°
+        # INFO: Angle at vertex no. 4 is 43.2855292063°
+
+        # Edge: GENERAL
+        # Angle: ONE_EQ_PAIR
+        "caltrop_no_intersect": (1, -0.429207417047766, 1.278271504241379),
+
+        # Edge: GENERAL
+        # Angle: ONE_EQ_PAIR
+        # For this one 2 pairs of 4 vertices end up on the exact same point:
+        #    the vertices of a tetrahedron
+        # The equal angles are exactly equal
+        "tetra_drill_head": (1, 2, 1.25),
     }
     for filename, abc_values in tetartoids.items():
         Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
@@ -1114,33 +1192,23 @@ class SpecialTetartoids:
         },
         # edge: E0_EQ_E1_2
         # angle: TWO_EQ_PAIRS
-        # δ = 1.5e-4
-        "v_shape_face_butterfly_0": {
-            # "abc": (1, 0.210138278109585, 2.484461652493819),
-            "start_with": (1., 0.2, 2.5),
+        # TODO: there is one option here to get the o3 vertices with the same radius
+        #       eg a,b,c = 1, 0.466857278756888, 1.304419759686907
+        "mountain_high_low": {
+            # "abc": (1, 0.210137975747359, 2.484458045095460),
+            "start_with": (1., 0.210138278109585, 2.484461652493819),
             "optimize_for": {
                 "opt_i": (0, 1),
-                "method": OptimalTetartoid.try_methods[1],
+                "method": OptimalTetartoid.try_methods[0],
                 "eq_edge_len": [1],
-                "eq_angle": [(4, 0)],
-            },
-        },
-        # Again? TODO: check
-        "v_shape_face_butterfly_0_0": {
-            "start_with": (0.4, 0.8, 2.0),
-            "optimize_for": {
-                "opt_i": (0, 1),
-                "method": "COBYQA",
-                "eq_edge_len": [1],
-                "eq_angle": [(0, 1)],
+                "eq_angle": [(0, 4), (1, 3)],
             },
         },
         # edge: E0_EQ_E3_4
         # angle: TWO_EQ_PAIRS
-        # δ = 1.2e-7
-        "v_shape_face_butterfly_1": {
-            # "abc": (1, 0.484454027157523, 1.274316688874315),
-            "start_with": (1., 0.2, 2.5),
+        "mountain_twin": {
+            # "abc": (1, 0.484454027365491, 1.274316689395054),
+            "start_with": (1, 0.484454027157523, 1.274316688874315),
             "optimize_for": {
                 "opt_i": (0, 1),
                 "method": OptimalTetartoid.try_methods[1],
@@ -1148,10 +1216,9 @@ class SpecialTetartoids:
                 "eq_angle": [(4, 0)],
             },
         },
-        # edge: GENERAL
+        # edge: GENERAL (only)
         # angle: TWO_EQ_PAIRS
-        # δ = 1.5e-10
-        "v_shape_face_butterfly_alt": {
+        "mountain_pair_general": {
             # "abc": (1, 0.204142371201545, 2.551342236267743),
             # Note
             # that even though we are optimizing for one edge length and one angle, the result has
@@ -1167,6 +1234,17 @@ class SpecialTetartoids:
                 "eq_angle": [(4, 0)],
             },
         },
+        # edge: GENERAL (only)
+        # angle: ONE_EQ_PAIR (only)
+        "mountain_pair_more_general": {
+            "start_with": (0.4, 0.8, 2.0),
+            "optimize_for": {
+                "opt_i": (0, 1),
+                "method": "COBYQA",
+                "eq_edge_len": [1],
+                "eq_angle": [(0, 1)],
+            },
+        },
         "spiky_butterfly": {
             # local minimum: (minimum = 8°)
             "start_with": (0.2, 0.4, 1),
@@ -1175,6 +1253,8 @@ class SpecialTetartoids:
                 "eq_angle": [(1, 2), (4, 0)],
             },
         },
+        # edge: GENERAL (only)
+        # angle: ONE_EQ_PAIR (only)
         "4_point_star_self_inters": {
             "start_with": (1, 2.3, 1.3),
             "optimize_for": {
@@ -1264,6 +1344,11 @@ class SpecialTetartoids:
             #    "opt_i": (0, 1),
             #    "eq_angle": [(2, 3), (3, 4)],
             #},
+        },
+        # edge: GENERAL
+        # angle:EQ_QUARTET
+        "twisted_extra": {
+            "abc": (1, 0, TAU),
         },
     }
 
@@ -1421,6 +1506,14 @@ if __name__ == "__main__":
         "separated by one comma only, i.e. no spaces. "
         "E.g. '2,3' means that the difference between the angles at vertex 0 and vertex 3 should "
         "minimized.",
+    )
+    parser.add_argument(
+        "--eq_o3_radius",
+        "-r",
+        action="store_true",
+        help="In each face there are two different vertices that end up on a 3-fold symmetry axis "
+        "If this parameter is set and an optimiser method is chosen, then the optimiser will "
+        "attempt to make these vertices have the same distance from the centre. ",
     )
     parser.add_argument(
         "--var_a",
@@ -1590,6 +1683,7 @@ if __name__ == "__main__":
                 "opt_i": tuple(opt_i),
                 "eq_edge_len": eq_edge_len,
                 "eq_angle": args.eq_angle,
+                "eq_o3_radius": args.eq_o3_radius,
             }
             LOGGER.debug("optmize for %s", optimize_for)
             tetartoid = OptimalTetartoid(tetartoid.abc, optimize_for, name=name)
