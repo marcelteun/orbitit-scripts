@@ -778,39 +778,19 @@ def generate_others(outdir: Path):
         # -------------------------
         "classic_tetartoid": (1, 2, 5),
 
-        # Almost mirrors, but only ONE_EQ_PAIR: TODO: can we make this with mirrors
+        # caltrop like, almost mirrors, but only ONE_EQ_PAIR:
         # here it is angle 0, 2 that are equal, i.e. the obtuse angles (δ = 0.e00)
-        "almost_s4a4": (1, 2.299046757145047, 1.230821269413600),
+        "almost_s4a4": (1, 1.905285313514105, 1.130121835531537),
         # here it is angle 3 and 4 that are more or less equal: δ = 2e-14
-        "almost_s4a4_a_3_4": (1, 2.142405515787968, 1.230821269273440),
-        # Trying to get both angles the same:
-        # using the above with '-m Powell -a 0,2 3,4'
-        # also 1, 2.513876617371318, 1.345832919546370  # angle 3,4, and var_a
-        # also 1, 2.142405516031935, 1.230821269413600  # angle 3,4, and var_b
-        # also 1, 2.299046757145047, 1.278271504241379  # angle 3,4, and var_b
-        # 1, 2.299046757145047, 1.278271504129421  # using Nelder-Mead 129/125, 47.978920
-        # 1, 2.299046200836823, 1.278271504241379  # using COBYQA --var_b
-        # python tetartoid.py -o out/tmp/ -v --model_name caltrop_test_a34_a02 --abc 1  2.299046757145047 1.278271504241379 -m Nelder-Mead -a 0,2 3,4 --var_c --var_b
-        #
-        # Best so far:
-        # A, B, C = 1.000000000000000, 1.790456355510369, 1.132018409857059
-        # INFO: Angle at vertex no. 0 is 126.2736748534°
-        # INFO: Angle at vertex no. 1 is 33.2401724001°
-        # INFO: Angle at vertex no. 2 is 122.6376406578°
-        # INFO: Angle at vertex no. 3 is 51.0757436802°
-        # INFO: Angle at vertex no. 4 is 51.0757442312°
-        #
-        # And
-        # python tetartoid.py -o out/tmp/ -v --model_name caltrop_test_a34_a02 --abc 1  1.79 1.13 -m Powell -a 0,2 3,4 --var_c --var_b
-        # INFO: Angle at vertex no. 0 is 134.1116170053°
-        # INFO: Angle at vertex no. 1 is 1.3812661739°
-        # INFO: Angle at vertex no. 2 is 131.0781752334°
-        # INFO: Angle at vertex no. 3 is 43.2855292063°
-        # INFO: Angle at vertex no. 4 is 43.2855292063°
+        # "almost_s4a4_a_3_4": (1, 2.142405515787968, 1.230821269273440),
+        "almost_s4a4_a_3_4": (1, 1.782708677617591, 1.130000004330078),
+        # here it is angle 3 and 4 that are more or less equal: δ = 4e-13
+        # while the difference for angle 0 and 2 ~= 3.6°
+        # Trying to get both angles the same failed
 
         # Edge: GENERAL
         # Angle: ONE_EQ_PAIR
-        "caltrop_no_intersect": (1, -0.429207417047766, 1.278271504241379),
+        "caltrop_try_edge": (1, -0.540860231494099, 2.595651659868778),
 
         # Edge: GENERAL
         # Angle: ONE_EQ_PAIR
@@ -1349,14 +1329,48 @@ class SpecialTetartoids:
             },
         },
         # edge: GENERAL
+        # angle: ONE_EQ_PAIR
+        "almost_s4a4": {
+            "start_with": (1, 1.7827, 1.13),
+            "optimize_for": {
+                "opt_i": (1, 2),
+                "method": OptimalTetartoid.try_methods[0],
+                "eq_angle": [(0, 2)],
+            },
+        },
+        # edge: GENERAL
+        # angle: ONE_EQ_PAIR
+        # Trying to optimise one extra angle
+        "almost_s4a4_a_3_4": {
+            "start_with": (1, 1.7827, 1.13),
+            "optimize_for": {
+                "opt_i": (1, 2),
+                "method": OptimalTetartoid.try_methods[0],
+                # For some reason the result for 3,4 gets better by adding 0,2
+                "eq_angle": [(0, 2), (3, 4)],
+            },
+        },
+        # edge: GENERAL
+        # angle: ONE_EQ_PAIR
+        # Trying to optimise one extra edge length
+        "caltrop_try_edge": {
+            "start_with": (1, -0.4, 2.6),
+            "optimize_for": {
+                "opt_i": (1, 2),
+                "method": OptimalTetartoid.try_methods[0],
+                "eq_angle": [(3, 4)],
+                "eq_edge_len": [1],
+            },
+        },
+        # edge: GENERAL
         # angle:EQ_QUARTET
         "twist": {
             "abc": (TAU, 0, 1),
-            #"start_with": (1.6, 0.1, 1),
-            #"optimize_for": {
-            #    "opt_i": (0, 1),
-            #    "eq_angle": [(2, 3), (3, 4)],
-            #},
+            # "start_with": (1.6, 0.1, 1),
+            # "optimize_for": {
+            #     "opt_i": (0, 1),
+            #     "eq_angle": [(2, 3), (3, 4)],
+            # },
         },
         # edge: GENERAL
         # angle:EQ_QUARTET
