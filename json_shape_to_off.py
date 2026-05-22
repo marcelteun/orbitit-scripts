@@ -3,7 +3,6 @@ import argparse
 import logging
 import os
 from pathlib import Path
-import sys
 
 from orbitit.base import Orbitit
 from orbitit import orbit
@@ -27,6 +26,11 @@ if __name__ == "__main__":
         help="A list of JSON files to convert.",
     )
     parser.add_argument(
+        "-j", "--to_js",
+        action="store_true",
+        help="Convert to JavaScript, otherwise the OFF format is used",
+    )
+    parser.add_argument(
         "-o", "--out_dir",
         default=".",
         help="path to directory to save the resulting OFF file(s).",
@@ -42,11 +46,18 @@ if __name__ == "__main__":
         os.mkdir(ARGS.out_dir)
 
     out_dir = Path(ARGS.out_dir)
+    EXTENSION = ".js" if ARGS.to_js else ".off"
     for json_file in ARGS.json_files:
         shape = Orbitit.from_json_file(json_file)
         path = Path(json_file).stem
-        new_file = out_dir / (path + ".off")
-        with open(new_file, "w") as fd:
+        if ARGS.to_js:
+            if not isinstance(shape, orbit.Shape):
+                raise ValueError(f"Cannot convert {json_file} to JavaScript, need orbit.Shape")
+            converted = shape.to_js(path)
+        else:
             clean_shape = shape.clean_shape(precision=9)
-            fd.write(clean_shape.to_off())
+            converted = clean_shape.to_off()
+        new_file = out_dir / (path + EXTENSION)
+        with open(new_file, "w") as fd:
+            fd.write(converted)
             logging.info("written %s", new_file)
