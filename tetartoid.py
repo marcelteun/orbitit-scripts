@@ -569,10 +569,11 @@ class OptimalTetartoid(Tetartoid):
             raise ValueError(
                 f"Expected three values for 'init_abc' got {init_abc}"
             )
-        self._try_abc = list(init_abc)
+        try_abc = list(init_abc)
         self.optimize = optimize_for
         for i in optimize_for["opt_i"]:
-            self._try_abc[i] = init_abc[i]
+            try_abc[i] = init_abc[i]
+        self._try_abc = try_abc
         self.calc_x()
         super().__init__(*self._try_abc, name)
 
@@ -597,8 +598,12 @@ class OptimalTetartoid(Tetartoid):
     def value_to_minimize(self, values):
         """The is the method, for which the result is minimized by SciPy's minimize."""
         logging.debug("Trying new input %s", values)
+        # Not changing self._try_abc directly, but through assigment, since it is a property with
+        # setter in OptTetartoidSharedVs
+        try_abc = list(self._try_abc)
         for i, abc_index in enumerate(self.optimize["opt_i"]):
-            self._try_abc[abc_index] = values[i]
+            try_abc[abc_index] = values[i]
+        self._try_abc = try_abc
         logging.debug("Trying a, b, c = %s", self._try_abc)
 
         face = self._face
@@ -654,8 +659,54 @@ class OptimalTetartoid(Tetartoid):
         return result.x
 
 
-# Don't copy A, B, C values
-# FIXME: get the standard definitions from opt_set.
+class TetartoidSharedVs(Tetartoid):
+    """This can be used to define a tetartoid for which the two vertices defined by n/d1 and n/d2
+    share the same point in 3D because d1 = -d2.
+    """
+    def __init__(self, a, b, c=None, name=""):
+        """
+        Initialise object
+
+        a, b, c: a the initial values for 'a', 'b'. The value of 'c', may or may not be added here;
+            it will not be used.
+        name: will be used as Shape name
+        """
+        if np.isclose(b, 0):
+            raise ValueError(f"The value of 'b' mustn't be 0, got {b}.")
+        init_abc = (a, b, (a**2 + b**2) / (2 * b))
+        super().__init__(*tuple(init_abc), name)
+
+
+class OptTetartoidSharedVs(OptimalTetartoid, Tetartoid):
+    """This can be used to optimise a tetartoid for which the two vertices defined by n/d1 and n/d2
+    share the same point in 3D because d1 = -d2.
+    """
+
+    @property
+    def _try_abc(self):
+        return self.__try_abc
+
+    @_try_abc.setter
+    def _try_abc(self, abc):
+        a, b = abc[:2]
+        self.__try_abc = (a, b, (a**2 + b**2) / (2 * b))
+
+    def __init__(self, init_ab, optimize_for=None, name=""):
+        """
+        Initialise object
+
+        init_ab: a tuple with the initial values for 'a', 'b'. The value of 'c', may or may not
+            be added here; it will not be used.
+        optimize_for: see parent class
+        name: will be used as Shape name
+        """
+        a, b = init_ab[:2]
+        if np.isclose(b, 0):
+            raise ValueError(f"The value of 'b' mustn't be 0, got {b}.")
+        # Note, c is ignored and instead it will be calculated in _try_abc.setter
+        init_abc = (a, b, 0)
+        super().__init__(init_abc, optimize_for, name)
+
 
 def generate_uniform(outdir: Path):
     """Generate tetartoids with faces or sides that give rise to uniform polyhedra.
@@ -797,7 +848,14 @@ def generate_others(outdir: Path):
         # For this one 2 pairs of 4 vertices end up on the exact same point:
         #    the vertices of a tetrahedron
         # The equal angles are exactly equal
-        "tetra_drill_head": (1, 2, 1.25),
+        "tetra_drill_head_alt": (1, 2, 1.25),
+
+        # Edge: E0_EQ_E1_2
+        # Angle: ONE_EQ_PAIR
+        # For this one 2 pairs of 4 vertices end up on the exact same point:
+        #    the vertices of a tetrahedron
+        # The equal angles are exactly equal
+        "tetra_drill_head": (1, 3.274316085206514, 1.789861687269396),
     }
     for filename, abc_values in tetartoids.items():
         Tetartoid(*abc_values).save_json(outdir / (filename + ".json"))
@@ -1230,13 +1288,25 @@ class SpecialTetartoids:
         # edge: GENERAL (only)
         # angle: ONE_EQ_PAIR (only)
         # eq_o3_radius
-        "tetra_drill_head": {
+        "tetra_drill_head_alt": {
             "start_with": (1, 2, 1.249),
             "optimize_for": {
                 "opt_i": (2,),
                 "method": "Powell",
                 "eq_angle": [(1, 3)],
                 "eq_o3_radius": True,
+            },
+        },
+        # edge: GENERAL (only)
+        # angle: ONE_EQ_PAIR (only)
+        # eq_o3_radius
+        "tetra_drill_head": {
+            "start_with": (1, 3.5, 2),
+            "eq_o3_vs": True,
+            "optimize_for": {
+                "opt_i": (1,),
+                "method": "Powell",
+                "eq_edge_len": [1],
             },
         },
         "spiky_butterfly": {
@@ -1538,10 +1608,20 @@ if __name__ == "__main__":
         "--eq_o3_radius",
         "-r",
         action="store_true",
-        help="In each face there are two different vertices that end up on a 3-fold symmetry axis "
-        "If this parameter is set and an optimiser method is chosen, then the optimiser will "
-        "attempt to make these vertices have the same distance from the centre. ",
+        help="If this is specified then the two vertices dependent on d1 and d2 will share the "
+        "same point in space. "
+        "This is not an optimisation argument, but it will use a different class then usual. "
+        "If this is specified, then only variables 'a' and 'b' are used; the value for 'c' is "
+        "calculated to fit the requirement. "
     )
+    parser.add_argument(
+        "--eq_o3_vs",
+        action="store_true",
+        help="In each face there are two different vertices that end up on a 3-fold symmetry axis "
+        "If this parameter is set the command line value for 'c' is ignored. Instead value of 'c' "
+        "is directly calculated to fit the requirement. ",
+    )
+
     parser.add_argument(
         "--var_a",
         action="store_true",
@@ -1675,7 +1755,8 @@ if __name__ == "__main__":
         if args.model_name:
             name = args.model_name
         if args.abc:
-            tetartoid = Tetartoid(*args.abc, name=name)
+            use_class = TetartoidSharedVs if args.eq_o3_vs else Tetartoid
+            tetartoid = use_class(*args.abc, name=name)
         else:
             org_name = args.tetartoid
             if name == "tetartoid":
@@ -1685,9 +1766,11 @@ if __name__ == "__main__":
             if "abc" in SpecialTetartoids.opt_setup[org_name]:
                 tetartoid = Tetartoid(*SpecialTetartoids.opt_setup[org_name]["abc"], name=org_name)
             else:
-                tetartoid = OptimalTetartoid(
-                    SpecialTetartoids.opt_setup[org_name]["start_with"],
-                    SpecialTetartoids.opt_setup[org_name]["optimize_for"],
+                setup = SpecialTetartoids.opt_setup[org_name]
+                use_class = OptTetartoidSharedVs if setup.get("eq_o3_vs") else OptimalTetartoid
+                tetartoid = use_class(
+                    setup["start_with"],
+                    setup["optimize_for"],
                     name=args.tetartoid,
                 )
 
@@ -1713,7 +1796,8 @@ if __name__ == "__main__":
                 "eq_o3_radius": args.eq_o3_radius,
             }
             LOGGER.debug("optmize for %s", optimize_for)
-            tetartoid = OptimalTetartoid(tetartoid.abc, optimize_for, name=name)
+            use_class = OptTetartoidSharedVs if args.eq_o3_vs else OptimalTetartoid
+            tetartoid = use_class(tetartoid.abc, optimize_for, name=name)
 
         if not args.skip_unify:
             tetartoid.unify()
